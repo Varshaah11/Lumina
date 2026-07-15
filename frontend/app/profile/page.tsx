@@ -1,91 +1,89 @@
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
-import { Navbar } from "@/components/Navbar";
-import { motion } from "framer-motion";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { LogOut, User as UserIcon, Mail, Calendar } from "lucide-react";
+import { User as UserIcon, Mail, Calendar, Shield, Edit2 } from "lucide-react";
 
 export default function ProfilePage() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading } = useAuth();
 
   return (
-    <div className="min-h-screen bg-black">
-      <Navbar />
-      
-      <main className="pt-32 pb-16 px-6 max-w-3xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-12"
-        >
-          <div className="flex items-center gap-4 mb-10">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-              <UserIcon className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white">Profile Settings</h1>
-              <p className="text-gray-400">Manage your account preferences</p>
-            </div>
+    <DashboardLayout>
+      <div className="max-w-4xl mx-auto pb-12">
+        <PageHeader 
+          title="Profile" 
+          description="Manage your personal information and account settings."
+          action={
+            <Button variant="outline" className="border-white/20 text-white hover:bg-white/10">
+              <Edit2 className="w-4 h-4 mr-2" />
+              Edit Profile
+            </Button>
+          }
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-1">
+            <DashboardCard title="Avatar" className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mb-4 shadow-xl border-4 border-black">
+                <UserIcon className="w-10 h-10 text-white" />
+              </div>
+              <h3 className="text-lg font-bold text-white">{user?.name || "User"}</h3>
+              <p className="text-sm text-gray-400">{user?.email}</p>
+            </DashboardCard>
           </div>
 
-          <div className="space-y-8">
-            <div className="space-y-6">
-              <div>
-                <label className="text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
-                  <UserIcon className="w-4 h-4" /> Name
-                </label>
+          <div className="md:col-span-2 space-y-6">
+            <DashboardCard title="Personal Information" icon={UserIcon}>
+              <div className="space-y-4 mt-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</label>
+                  {isLoading ? (
+                    <Skeleton className="h-6 w-48 bg-white/10 mt-1" />
+                  ) : (
+                    <div className="text-white font-medium text-lg mt-1">{user?.name || "Not set"}</div>
+                  )}
+                </div>
+                
+                <div className="h-px w-full bg-white/5" />
+
+                <div>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Email Address</label>
+                  {isLoading ? (
+                    <Skeleton className="h-6 w-64 bg-white/10 mt-1" />
+                  ) : (
+                    <div className="text-white font-medium text-lg mt-1">{user?.email}</div>
+                  )}
+                </div>
+              </div>
+            </DashboardCard>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <DashboardCard title="Account Created" icon={Calendar} delay={0.1}>
                 {isLoading ? (
-                  <Skeleton className="h-12 w-full bg-white/10 rounded-xl" />
+                  <Skeleton className="h-6 w-32 bg-white/10 mt-2" />
                 ) : (
-                  <div className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white">
-                    {user?.name || "Not set"}
+                  <div className="text-white font-medium text-lg mt-2">
+                    {user?.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { 
+                      year: 'numeric', month: 'long', day: 'numeric' 
+                    }) : "Unknown"}
                   </div>
                 )}
-              </div>
+              </DashboardCard>
 
-              <div>
-                <label className="text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
-                  <Mail className="w-4 h-4" /> Email
-                </label>
-                {isLoading ? (
-                  <Skeleton className="h-12 w-full bg-white/10 rounded-xl" />
-                ) : (
-                  <div className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-gray-300">
-                    {user?.email}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" /> Account Created
-                </label>
-                {isLoading ? (
-                  <Skeleton className="h-12 w-full bg-white/10 rounded-xl" />
-                ) : (
-                  <div className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-gray-400">
-                    {user?.created_at ? new Date(user.created_at).toLocaleDateString() : "Unknown"}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="pt-8 border-t border-white/10">
-              <Button 
-                onClick={logout}
-                variant="destructive" 
-                className="w-full md:w-auto flex items-center gap-2"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </Button>
+              <DashboardCard title="Security Level" icon={Shield} delay={0.2}>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <span className="text-white font-medium text-lg">Standard</span>
+                </div>
+              </DashboardCard>
             </div>
           </div>
-        </motion.div>
-      </main>
-    </div>
+        </div>
+      </div>
+    </DashboardLayout>
   );
 }
