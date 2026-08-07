@@ -38,6 +38,10 @@ class ChatService:
                 yield f"data: {json.dumps({'error': 'Chat not found'})}\n\n"
                 return
 
+        # Fetch existing history for this chat prior to saving new message
+        existing_msgs = db.query(Message).filter(Message.chat_id == chat_id).order_by(Message.created_at.asc()).all()
+        history = [{"role": m.role, "content": m.content} for m in existing_msgs]
+
         # Save user message
         user_msg = Message(chat_id=chat_id, role="user", content=request.message)
         db.add(user_msg)
@@ -46,9 +50,12 @@ class ChatService:
         # Yield chat_id so frontend knows which chat this is
         yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"
 
+        # Append latest user message to history
+        history.append({"role": "user", "content": request.message})
+
         full_response = ""
         async for chunk in ai_service.stream_chat_response(
-            user_message=request.message,
+            messages_history=history,
             user_name=current_user.name
         ):
             yield chunk

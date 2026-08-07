@@ -26,18 +26,41 @@ interface SidebarProps {
 export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const currentChatId = searchParams?.get("chatId");
+  const searchChatId = searchParams?.get("chatId");
+  const [currentChatId, setCurrentChatId] = useState<string | null>(searchChatId || null);
   
   const { logout } = useAuth();
   const [recentChats, setRecentChats] = useState<any[]>([]);
 
   useEffect(() => {
-    chatService.getChats().then((data) => {
-      if (Array.isArray(data)) {
-        setRecentChats(data);
+    const urlChatId = searchParams?.get("chatId") || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("chatId") : null);
+    setCurrentChatId(urlChatId);
+  }, [searchParams, pathname]);
+
+  useEffect(() => {
+    const loadChats = () => {
+      chatService.getChats().then((data) => {
+        if (Array.isArray(data)) {
+          setRecentChats(data);
+        }
+      }).catch(console.error);
+    };
+
+    loadChats();
+
+    const handleChatCreated = () => {
+      loadChats();
+      if (typeof window !== "undefined") {
+        const activeId = new URLSearchParams(window.location.search).get("chatId");
+        setCurrentChatId(activeId);
       }
-    }).catch(console.error);
-  }, [pathname, currentChatId]); // Refresh when navigating or changing chats
+    };
+
+    window.addEventListener("chat-created", handleChatCreated);
+    return () => {
+      window.removeEventListener("chat-created", handleChatCreated);
+    };
+  }, [pathname, searchParams]);
 
   const topItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },

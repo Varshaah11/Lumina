@@ -28,17 +28,18 @@ class AIService:
             return FALLBACK_MODEL
 
     @staticmethod
-    async def get_chat_response(user_message: str, user_name: str = "User") -> str:
+    async def get_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User") -> str:
         """
         Builds the conversation history and queries the LLM.
         """
         system_prompt = get_system_prompt(user_name)
         model = await AIService.get_active_model()
         
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+        if messages_history:
+            messages.extend(messages_history)
+        elif user_message:
+            messages.append({"role": "user", "content": user_message})
         
         try:
             # We are using stream=False for Phase 6.1, preparing for True in later phases.
@@ -61,17 +62,18 @@ class AIService:
             raise Exception(f"An error occurred while generating the response: {error_msg}")
 
     @staticmethod
-    async def stream_chat_response(user_message: str, user_name: str = "User"):
+    async def stream_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User"):
         """
         Builds the conversation history and streams the query to the LLM.
         """
         system_prompt = get_system_prompt(user_name)
         model = await AIService.get_active_model()
         
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+        if messages_history:
+            messages.extend(messages_history)
+        elif user_message:
+            messages.append({"role": "user", "content": user_message})
         
         try:
             response_stream = await ollama_client.generate_chat(model=model, messages=messages, stream=True)

@@ -1,5 +1,6 @@
 import { api } from "./api";
 import { ChatSession } from "@/hooks/useChat";
+import Cookies from "js-cookie";
 
 export const chatService = {
   sendMessage: async (message: string): Promise<string> => {
@@ -28,80 +29,78 @@ export const chatService = {
   ): AbortController => {
     const controller = new AbortController();
     
-    import("js-cookie").then((Cookies) => {
-      const token = Cookies.default.get("token");
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-      };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+    const token = Cookies.get("token");
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    
+    const payload: any = { message };
+    if (chatId) {
+      payload.chat_id = parseInt(chatId, 10);
+    }
+
+    fetch(`${API_BASE_URL}/chat/stream`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) {
+        throw new Error("Failed to connect to chat stream.");
       }
       
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
       
-      const payload: any = { message };
-      if (chatId) {
-        payload.chat_id = parseInt(chatId, 10);
+      if (!reader) {
+        throw new Error("No reader available");
       }
 
-      fetch(`${API_BASE_URL}/chat/stream`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      }).then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Failed to connect to chat stream.");
-        }
+      let buffer = "";
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
         
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
+        buffer += decoder.decode(value, { stream: true });
         
-        if (!reader) {
-          throw new Error("No reader available");
-        }
-
-        let buffer = "";
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || "";
         
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          buffer += decoder.decode(value, { stream: true });
-          
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || "";
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6);
-              try {
-                const data = JSON.parse(dataStr);
-                if (data.error) {
-                  onError(data.error);
-                  return;
-                }
-                if (data.chat_id) {
-                  onChatIdReceived(data.chat_id.toString());
-                }
-                if (data.token) {
-                  onChunk(data.token);
-                }
-              } catch (e) {
-                // Ignore parse errors on partial chunks if any
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.error) {
+                onError(data.error);
+                return;
               }
+              if (data.chat_id) {
+                onChatIdReceived(data.chat_id.toString());
+              }
+              if (data.token) {
+                onChunk(data.token);
+              }
+            } catch (e) {
+              // Ignore parse errors on partial chunks if any
             }
           }
         }
-        
+      }
+      
+      onComplete();
+    }).catch((error) => {
+      if (error.name === "AbortError") {
         onComplete();
-      }).catch((error) => {
-        if (error.name === "AbortError") {
-          onComplete();
-        } else {
-          onError(error.message);
-        }
-      });
+      } else {
+        onError(error.message);
+      }
     });
     
     return controller;
