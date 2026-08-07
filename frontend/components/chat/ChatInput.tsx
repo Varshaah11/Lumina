@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Paperclip } from "lucide-react";
+import { Send, Paperclip, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   isLoading: boolean;
+  onStop?: () => void;
 }
 
-export function ChatInput({ onSend, isLoading }: ChatInputProps) {
+export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -60,20 +61,30 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
           placeholder="Ask Lumina anything..."
           className="flex-1 max-h-[200px] min-h-[44px] bg-transparent border-0 resize-none py-3 px-2 text-white placeholder:text-gray-500 focus:ring-0 focus:outline-none"
           rows={1}
-          disabled={isLoading}
         />
         
-        <Button 
-          type="submit" 
-          disabled={!input.trim() || isLoading}
-          className={`shrink-0 h-10 w-10 rounded-xl mb-0.5 flex items-center justify-center transition-all ${
-            input.trim() && !isLoading 
-              ? "bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg" 
-              : "bg-white/5 text-gray-500"
-          }`}
-        >
-          <Send className="w-4 h-4" />
-        </Button>
+        {isLoading ? (
+          <Button
+            type="button"
+            onClick={onStop}
+            className="shrink-0 h-10 w-10 rounded-xl mb-0.5 flex items-center justify-center transition-all bg-red-500/20 text-red-400 hover:bg-red-500/30 shadow-lg"
+            title="Stop generation"
+          >
+            <Square className="w-4 h-4 fill-current" />
+          </Button>
+        ) : (
+          <Button 
+            type="submit" 
+            disabled={!input.trim()}
+            className={`shrink-0 h-10 w-10 rounded-xl mb-0.5 flex items-center justify-center transition-all ${
+              input.trim() 
+                ? "bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg" 
+                : "bg-white/5 text-gray-500"
+            }`}
+          >
+            <Send className="w-4 h-4" />
+          </Button>
+        )}
       </form>
       <div className="text-center mt-3">
         <p className="text-xs text-gray-500">
