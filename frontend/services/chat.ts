@@ -84,9 +84,10 @@ export const chatService = {
               if (data.chat_id) {
                 onChatIdReceived(data.chat_id.toString());
               }
-              if (data.token) {
-                onChunk(data.token);
-              }
+              if ("token" in data) {
+  console.log("[stream] token received:", JSON.stringify(data.token));
+  onChunk(data.token);
+}
             } catch (e) {
               // Ignore parse errors on partial chunks if any
             }
