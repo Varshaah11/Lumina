@@ -96,6 +96,18 @@ class ChatService:
         return db.query(Chat).options(joinedload(Chat.messages)).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
 
     @staticmethod
+    def delete_chat(chat_id: int, user_id: int, db: Session) -> bool:
+        """
+        Deletes a chat and all associated messages for a user.
+        """
+        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+        if not chat:
+            return False
+        db.delete(chat)
+        db.commit()
+        return True
+
+    @staticmethod
     async def process_regenerate_stream(chat_id: int, current_user: UserResponse, db: Session):
         """
         Regenerates the latest assistant response for a chat and streams the response via SSE.

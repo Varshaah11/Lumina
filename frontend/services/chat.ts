@@ -143,5 +143,11 @@ export const chatService = {
       onError,
       onComplete
     );
+  },
+
+  deleteChat: async (chatId: string | number): Promise<{ message: string; chat_id: number }> => {
+    return api<{ message: string; chat_id: number }>(`/chat/${chatId}`, {
+      method: "DELETE",
+    });
   }
 };

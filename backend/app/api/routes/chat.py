@@ -66,3 +66,18 @@ async def regenerate_chat_endpoint(
     generator = chat_service.process_regenerate_stream(chat_id, current_user, db)
     return StreamingResponse(generator, media_type="text/event-stream")
 
+@router.delete("/{chat_id}")
+def delete_chat_endpoint(
+    chat_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a specific chat and all its associated messages for the current user.
+    Requires authentication.
+    """
+    success = chat_service.delete_chat(chat_id, current_user.id, db)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+    return {"message": "Chat deleted successfully", "chat_id": chat_id}
+
