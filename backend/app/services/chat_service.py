@@ -25,7 +25,9 @@ class ChatService:
         Persists chats and messages to the database.
         """
         chat_id = request.chat_id
+        is_new_chat = False
         if not chat_id:
+            is_new_chat = True
             title = request.message[:50] + "..." if len(request.message) > 50 else request.message
             new_chat = Chat(title=title, user_id=current_user.id)
             db.add(new_chat)
@@ -72,6 +74,18 @@ class ChatService:
             assistant_msg = Message(chat_id=chat_id, role="assistant", content=full_response)
             db.add(assistant_msg)
             db.commit()
+
+        # If this was a new chat creation, auto-generate concise AI title
+        if is_new_chat:
+            try:
+                ai_title = await ai_service.generate_title(request.message)
+                if ai_title:
+                    chat_obj = db.query(Chat).filter(Chat.id == chat_id).first()
+                    if chat_obj:
+                        chat_obj.title = ai_title
+                        db.commit()
+            except Exception:
+                pass
 
     @staticmethod
     def get_user_chats(user_id: int, db: Session):

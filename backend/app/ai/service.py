@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 from httpx import ConnectError
 from app.ai.client import ollama_client
 from app.ai.prompts import get_system_prompt
@@ -9,6 +10,28 @@ logger = logging.getLogger(__name__)
 # Recommended default model
 PRIMARY_MODEL = "llama3.1:8b"
 FALLBACK_MODEL = "llama3.2:3b"
+
+SHORT_GREETINGS = {"hi", "hello", "hey", "greetings", "sup", "yo", "test", "help", "hola"}
+
+def sanitize_title(title_text: str, fallback: str) -> str:
+    if not title_text:
+        return fallback
+
+    # Strip prefixes like "Title:", "Topic:", "Chat Title:"
+    cleaned = re.sub(r'^(title|topic|chat title|heading|summary):\s*', '', title_text, flags=re.IGNORECASE).strip()
+
+    # Strip quotes, markdown, and take first line
+    cleaned = cleaned.strip('"\'`#*_').split('\n')[0].strip()
+    cleaned = re.sub(r'^["\'](.*)["\']$', r'\1', cleaned).strip()
+
+    # Restrict to max 8 words / 60 chars
+    words = cleaned.split()
+    if len(words) > 8:
+        cleaned = " ".join(words[:8])
+    if len(cleaned) > 60:
+        cleaned = cleaned[:57].rstrip() + "..."
+
+    return cleaned if len(cleaned) >= 2 else fallback
 
 class AIService:
     @staticmethod
@@ -26,6 +49,39 @@ class AIService:
         except Exception:
             # If listing fails but we can connect, assume fallback
             return FALLBACK_MODEL
+
+    @staticmethod
+    async def generate_title(user_message: str) -> str:
+        """
+        Generates a concise 3-6 word title summarizing the user message using LLM.
+        Falls back to truncated user_message on error or for short greetings.
+        """
+        msg_clean = user_message.strip()
+        fallback_title = msg_clean[:50] + "..." if len(msg_clean) > 50 else msg_clean
+
+        if msg_clean.lower() in SHORT_GREETINGS or len(msg_clean) <= 10:
+            return fallback_title
+
+        model = await AIService.get_active_model()
+        system_prompt = (
+            "You are a title generation assistant. "
+            "Generate a concise, 3 to 6 word title summarizing the user's message. "
+            "Return ONLY the plain title text without quotes, prefixes, markdown, or punctuation."
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Message: {user_message}"}
+        ]
+
+        try:
+            response = await ollama_client.generate_chat(model=model, messages=messages, stream=False)
+            if 'message' in response and 'content' in response['message']:
+                raw_title = response['message']['content']
+                return sanitize_title(raw_title, fallback_title)
+        except Exception as e:
+            logger.warning(f"AI Title generation failed: {e}")
+
+        return fallback_title
 
     @staticmethod
     async def get_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User") -> str:

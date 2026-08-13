@@ -31,6 +31,7 @@ export function useChat() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadedChatIdRef = useRef<string | null>(null);
   const currentChatIdRef = useRef<string | null>(initialChatId || null);
+  const wasStreamingNewChatRef = useRef<boolean>(false);
 
   // Sync ref with current chatId state
   useEffect(() => {
@@ -85,6 +86,11 @@ export function useChat() {
     } else {
       if (loadedChatIdRef.current === null && chatId === null) return;
       if (isLoading && currentChatIdRef.current) return; // Protect active new chat stream from being wiped
+      if (wasStreamingNewChatRef.current) {
+        console.log("[useChat] Protecting active new chat stream completion on /chat page");
+        wasStreamingNewChatRef.current = false;
+        return;
+      }
 
       if (abortControllerRef.current) {
         console.log("[useChat] Aborting stream on reset to new chat");
@@ -133,6 +139,9 @@ export function useChat() {
     setIsLoading(true);
 
     const activeChatId = currentChatIdRef.current;
+    if (!activeChatId) {
+      wasStreamingNewChatRef.current = true;
+    }
 
     abortControllerRef.current = chatService.streamMessage(
       content,
