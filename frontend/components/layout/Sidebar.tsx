@@ -16,7 +16,10 @@ import {
   MessageSquare,
   Trash2,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Pencil,
+  Check,
+  X
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { chatService } from "@/services/chat";
@@ -40,6 +43,12 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const [chatToDelete, setChatToDelete] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // State for chat renaming inline UI
+  const [editingChatId, setEditingChatId] = useState<number | null>(null);
+  const [editingTitle, setEditingTitle] = useState<string>("");
+  const [isRenaming, setIsRenaming] = useState<boolean>(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   useEffect(() => {
     const urlChatId = searchParams?.get("chatId") || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("chatId") : null);
@@ -104,6 +113,68 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       // Retain chat in state if deletion fails
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleRenameClick = (e: React.MouseEvent, chat: any) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setRenameError(null);
+    setEditingChatId(chat.id);
+    setEditingTitle(chat.title);
+  };
+
+  const handleCancelRename = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setEditingChatId(null);
+    setEditingTitle("");
+    setRenameError(null);
+  };
+
+  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent, chat?: any) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (!editingChatId) return;
+
+    const trimmedTitle = editingTitle.trim();
+    if (!trimmedTitle || isRenaming) return;
+
+    const targetId = editingChatId;
+    setIsRenaming(true);
+    setRenameError(null);
+
+    try {
+      const updatedChat = await chatService.renameChat(targetId, trimmedTitle);
+
+      // Immediately update sidebar state
+      setRecentChats((prev) =>
+        prev.map((c) => (c.id === targetId ? { ...c, title: updatedChat.title } : c))
+      );
+
+      setEditingChatId(null);
+      setEditingTitle("");
+    } catch (err: any) {
+      console.error("Failed to rename chat:", err);
+      const errorMessage = err?.message || "Failed to rename chat.";
+      setRenameError(errorMessage);
+      // Keep previous title in state
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const handleKeyDownRename = (e: React.KeyboardEvent, chat: any) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleConfirmRename(e, chat);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancelRename();
     }
   };
 
@@ -201,6 +272,56 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
               <div className="space-y-1">
                 {recentChats.map((chat) => {
                   const isActive = pathname === "/chat" && currentChatId === chat.id.toString();
+                  const isEditing = editingChatId === chat.id;
+
+                  if (isEditing && !isCollapsed) {
+                    return (
+                      <div key={chat.id} className="relative group/item my-1">
+                        <div className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-white/10 border border-indigo-500/50">
+                          <MessageSquare className="w-4 h-4 text-indigo-400 shrink-0 ml-1" />
+                          <input
+                            type="text"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => handleKeyDownRename(e, chat)}
+                            maxLength={255}
+                            autoFocus
+                            disabled={isRenaming}
+                            className="bg-transparent text-white text-sm font-medium focus:outline-none flex-1 min-w-0 px-1 py-0.5"
+                            placeholder="Chat title..."
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => handleConfirmRename(e, chat)}
+                            disabled={!editingTitle.trim() || isRenaming}
+                            className="p-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-all disabled:opacity-40 disabled:hover:bg-transparent shrink-0 cursor-pointer"
+                            title="Save"
+                          >
+                            {isRenaming ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelRename}
+                            disabled={isRenaming}
+                            className="p-1 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all shrink-0 cursor-pointer"
+                            title="Cancel"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {renameError && (
+                          <div className="px-2 pt-1 text-[11px] text-red-400 truncate">
+                            {renameError}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={chat.id} className="relative group/item">
                       <Link
@@ -227,14 +348,24 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                           </AnimatePresence>
                         </div>
                         {!isCollapsed && (
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteClick(e, chat)}
-                            className="opacity-0 group-hover/item:opacity-100 p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all shrink-0 ml-1"
-                            title="Delete chat"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 ml-1">
+                            <button
+                              type="button"
+                              onClick={(e) => handleRenameClick(e, chat)}
+                              className="p-1.5 text-gray-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-all"
+                              title="Rename chat"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteClick(e, chat)}
+                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                              title="Delete chat"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </Link>
                     </div>
@@ -244,6 +375,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
             </div>
           )}
         </div>
+
 
         <div className="p-3 border-t border-white/5 space-y-2 shrink-0">
           {bottomItems.map((item) => {

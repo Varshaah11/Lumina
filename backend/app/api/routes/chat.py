@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from typing import List
 from sqlalchemy.orm import Session
-from app.schemas.chat import ChatRequest, ChatResponse, ChatResponseDB, ChatHistoryResponseDB
+from app.schemas.chat import ChatRequest, ChatResponse, ChatResponseDB, ChatHistoryResponseDB, ChatRenameRequest
 from app.schemas.user import UserResponse
 from app.services.chat_service import chat_service
 from app.api.dependencies import get_current_user, get_db
@@ -81,3 +81,23 @@ def delete_chat_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
     return {"message": "Chat deleted successfully", "chat_id": chat_id}
 
+@router.patch("/{chat_id}", response_model=ChatResponseDB)
+def rename_chat_endpoint(
+    chat_id: int,
+    request: ChatRenameRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Rename a specific chat for the current user.
+    Requires authentication.
+    """
+    try:
+        updated_chat = chat_service.rename_chat(chat_id, request.title, current_user.id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    if not updated_chat:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
+    return updated_chat

@@ -149,5 +149,12 @@ export const chatService = {
     return api<{ message: string; chat_id: number }>(`/chat/${chatId}`, {
       method: "DELETE",
     });
+  },
+
+  renameChat: async (chatId: string | number, title: string): Promise<any> => {
+    return api<any>(`/chat/${chatId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    });
   }
 };

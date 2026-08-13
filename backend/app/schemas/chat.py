@@ -6,6 +6,9 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="The message from the user to the AI.")
     chat_id: Optional[int] = Field(None, description="The ID of the chat session, if continuing an existing one.")
 
+class ChatRenameRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255, description="New title for the chat session.")
+
 class ChatResponse(BaseModel):
     response: str = Field(..., description="The AI's generated response.")
 

@@ -108,6 +108,25 @@ class ChatService:
         return True
 
     @staticmethod
+    def rename_chat(chat_id: int, title: str, user_id: int, db: Session):
+        """
+        Renames a chat for a user after trimming and validating the title.
+        """
+        cleaned_title = title.strip()
+        if not cleaned_title:
+            raise ValueError("Title cannot be empty or whitespace-only")
+        if len(cleaned_title) > 255:
+            raise ValueError("Title cannot exceed 255 characters")
+
+        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+        if not chat:
+            return None
+        chat.title = cleaned_title
+        db.commit()
+        db.refresh(chat)
+        return chat
+
+    @staticmethod
     async def process_regenerate_stream(chat_id: int, current_user: UserResponse, db: Session):
         """
         Regenerates the latest assistant response for a chat and streams the response via SSE.
