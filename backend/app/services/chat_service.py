@@ -81,4 +81,56 @@ class ChatService:
     def get_chat_history(chat_id: int, user_id: int, db: Session):
         return db.query(Chat).options(joinedload(Chat.messages)).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
 
+    @staticmethod
+    async def process_regenerate_stream(chat_id: int, current_user: UserResponse, db: Session):
+        """
+        Regenerates the latest assistant response for a chat and streams the response via SSE.
+        Updates the assistant message in the database upon completion.
+        """
+        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
+        if not chat:
+            yield f"data: {json.dumps({'error': 'Chat not found'})}\n\n"
+            return
+
+        existing_msgs = db.query(Message).filter(Message.chat_id == chat_id).order_by(Message.created_at.asc()).all()
+        if not existing_msgs:
+            yield f"data: {json.dumps({'error': 'No messages found in chat'})}\n\n"
+            return
+
+        target_assistant_msg = None
+        target_index = -1
+        for i in range(len(existing_msgs) - 1, -1, -1):
+            if existing_msgs[i].role == "assistant":
+                target_assistant_msg = existing_msgs[i]
+                target_index = i
+                break
+
+        if not target_assistant_msg or target_index == 0:
+            yield f"data: {json.dumps({'error': 'No assistant message found to regenerate'})}\n\n"
+            return
+
+        history_msgs = existing_msgs[:target_index]
+        history = [{"role": m.role, "content": m.content} for m in history_msgs]
+
+        yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"
+
+        full_response = ""
+        try:
+            async for chunk in ai_service.stream_chat_response(
+                messages_history=history,
+                user_name=current_user.name
+            ):
+                yield chunk
+                if chunk.startswith("data: "):
+                    try:
+                        data = json.loads(chunk[6:].strip())
+                        if "token" in data:
+                            full_response += data["token"]
+                    except json.JSONDecodeError:
+                        pass
+        finally:
+            if full_response:
+                target_assistant_msg.content = full_response
+                db.commit()
+
 chat_service = ChatService()

@@ -52,3 +52,17 @@ async def chat_stream_endpoint(
     """
     generator = chat_service.process_streaming_chat(request, current_user, db)
     return StreamingResponse(generator, media_type="text/event-stream")
+
+@router.post("/{chat_id}/regenerate")
+async def regenerate_chat_endpoint(
+    chat_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Regenerate the latest assistant response for a chat via SSE.
+    Requires authentication.
+    """
+    generator = chat_service.process_regenerate_stream(chat_id, current_user, db)
+    return StreamingResponse(generator, media_type="text/event-stream")
+

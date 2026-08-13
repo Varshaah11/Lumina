@@ -78,7 +78,7 @@ export function useChat() {
           }
         })
         .catch((err) => {
-          console.error("[useChat] getChatHistory failed:", err);
+          console.warn("[useChat] getChatHistory failed:", err);
           setMessages([]);
         })
         .finally(() => setIsLoading(false));
@@ -174,9 +174,13 @@ export function useChat() {
         }
       },
       (errorMsg) => {
-        console.log("[useChat] onError() called with errorMsg:", errorMsg);
+        console.warn("[useChat] streamMessage error:", errorMsg);
         console.log("[useChat][setMessages] Source: error");
         setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.role === "error" && lastMsg.content === errorMsg) {
+            return prev;
+          }
           const newMessages = prev.filter(msg => !(msg.id === botMsgId && msg.content === ""));
           return [
             ...newMessages,
@@ -215,6 +219,76 @@ export function useChat() {
     }
   };
 
+  const regenerateResponse = (messageId: string) => {
+    console.log("[useChat] regenerateResponse() called for messageId:", messageId);
+    if (isLoading) return;
+
+    const activeChatId = currentChatIdRef.current;
+    if (!activeChatId) return;
+
+    const targetMsg = messages.find((m) => m.id === messageId);
+    if (!targetMsg || targetMsg.role !== "assistant") return;
+
+    const oldContent = targetMsg.content;
+    const botMsgId = messageId;
+
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId
+          ? { ...msg, content: "" }
+          : msg
+      )
+    );
+    setIsLoading(true);
+
+    abortControllerRef.current = chatService.regenerateMessage(
+      activeChatId,
+      (textChunk) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === botMsgId
+              ? { ...msg, content: msg.content + textChunk }
+              : msg
+          )
+        );
+      },
+      (errorMsg) => {
+        console.warn("[useChat] regenerate error:", errorMsg);
+        setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.role === "error" && lastMsg.content === errorMsg) {
+            return prev;
+          }
+
+          const currentMsg = prev.find((m) => m.id === botMsgId);
+          const updatedMessages = prev.map((msg) => {
+            if (msg.id === botMsgId && msg.content === "") {
+              return { ...msg, content: oldContent };
+            }
+            return msg;
+          });
+
+          return [
+            ...updatedMessages,
+            {
+              id: crypto.randomUUID(),
+              role: "error",
+              content: errorMsg,
+              timestamp: new Date(),
+            },
+          ];
+        });
+        setIsLoading(false);
+        abortControllerRef.current = null;
+      },
+      () => {
+        console.log("[useChat] regenerate onComplete()");
+        setIsLoading(false);
+        abortControllerRef.current = null;
+      }
+    );
+  };
+
   const clearChat = () => setMessages([]);
 
   return {
@@ -222,6 +296,7 @@ export function useChat() {
     isLoading,
     sendMessage,
     stopGeneration,
+    regenerateResponse,
     clearChat,
   };
 }

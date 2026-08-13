@@ -9,7 +9,7 @@ import { useChat } from "@/hooks/useChat";
 import { motion, AnimatePresence } from "framer-motion";
 
 function ChatContent() {
-  const { messages, isLoading, sendMessage, stopGeneration } = useChat();
+  const { messages, isLoading, sendMessage, stopGeneration, regenerateResponse } = useChat();
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
@@ -44,7 +44,15 @@ function ChatContent() {
           <div className="flex flex-col min-h-full py-6 space-y-2">
             <AnimatePresence initial={false}>
               {messages.map((message) => (
-                <ChatBubble key={message.id} message={message} />
+                <ChatBubble
+                  key={message.id}
+                  message={message}
+                  onRegenerate={
+                    message.role === "assistant" && message.content !== "" && !isLoading
+                      ? () => regenerateResponse(message.id)
+                      : undefined
+                  }
+                />
               ))}
             </AnimatePresence>
             <div ref={bottomRef} className="h-4" />
