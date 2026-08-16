@@ -47,6 +47,7 @@ function ChatContent() {
                 <ChatBubble
                   key={message.id}
                   message={message}
+                  isStreaming={isLoading}
                   onRegenerate={
                     message.role === "assistant" && message.content !== "" && !isLoading
                       ? () => regenerateResponse(message.id)

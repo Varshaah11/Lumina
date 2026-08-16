@@ -1,19 +1,56 @@
 import { useState } from "react";
 import { Message } from "@/hooks/useChat";
-import { Sparkles, User as UserIcon, Copy, Check, RotateCcw, AlertCircle } from "lucide-react";
+import { Sparkles, Copy, Check, RotateCcw, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { Button } from "@/components/ui/button";
+import { MermaidDiagram } from "./MermaidDiagram";
 
-export function ChatBubble({ message, onRegenerate }: { message: Message, onRegenerate?: () => void }) {
+function getHeadingSlug(children: any, slugTracker: Map<string, number>): string {
+  const extractText = (node: any): string => {
+    if (typeof node === "string") return node;
+    if (typeof node === "number") return String(node);
+    if (Array.isArray(node)) return node.map(extractText).join("");
+    if (node?.props?.children) return extractText(node.props.children);
+    return "";
+  };
+
+  const text = extractText(children);
+  const baseSlug =
+    text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-") || "heading";
+
+  const count = slugTracker.get(baseSlug) || 0;
+  slugTracker.set(baseSlug, count + 1);
+
+  return count === 0 ? baseSlug : `${baseSlug}-${count}`;
+}
+
+export function ChatBubble({
+  message,
+  onRegenerate,
+  isStreaming,
+}: {
+  message: Message;
+  onRegenerate?: () => void;
+  isStreaming?: boolean;
+}) {
   const isUser = message.role === "user";
   const isError = message.role === "error";
   const { user } = useAuth();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const slugTracker = new Map<string, number>();
 
   const copyToClipboard = (text: string, id: string = "msg") => {
     navigator.clipboard.writeText(text);
@@ -28,13 +65,15 @@ export function ChatBubble({ message, onRegenerate }: { message: Message, onRege
       className={`flex gap-4 w-full max-w-4xl mx-auto py-6 ${isUser ? "flex-row-reverse" : "flex-row"}`}
     >
       {/* Avatar */}
-      <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-md ${
-        isUser 
-          ? "bg-gradient-to-br from-indigo-500 to-purple-500" 
-          : isError
+      <div
+        className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center shadow-md ${
+          isUser
+            ? "bg-gradient-to-br from-indigo-500 to-purple-500"
+            : isError
             ? "bg-red-500/20 border border-red-500/50 text-red-400"
             : "bg-white/10 border border-white/20"
-      }`}>
+        }`}
+      >
         {isUser ? (
           <span className="text-xs font-bold text-white">
             {user?.name?.charAt(0).toUpperCase() || "U"}
@@ -53,19 +92,21 @@ export function ChatBubble({ message, onRegenerate }: { message: Message, onRege
             {isUser ? user?.name || "You" : isError ? "System Error" : "Lumina"}
           </span>
           <span className="text-xs text-gray-500">
-            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
-        
-        <div className={`px-5 py-4 rounded-2xl relative group ${
-          isUser 
-            ? "bg-indigo-500 text-white rounded-tr-sm shadow-[0_0_15px_rgba(99,102,241,0.2)]" 
-            : isError
+
+        <div
+          className={`px-5 py-4 rounded-2xl relative group ${
+            isUser
+              ? "bg-indigo-500 text-white rounded-tr-sm shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+              : isError
               ? "bg-red-500/10 border border-red-500/20 text-red-200 rounded-tl-sm"
               : "bg-white/5 border border-white/10 text-gray-200 rounded-tl-sm shadow-sm"
-        }`}>
+          }`}
+        >
           {isUser ? (
-            <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+            <div className="whitespace-pre-wrap leading-relaxed text-sm">{message.content}</div>
           ) : !isError && message.content === "" ? (
             <div className="flex items-center gap-1.5 h-6">
               <div className="w-2 h-2 rounded-full bg-indigo-400/50 animate-bounce" style={{ animationDelay: "0ms" }} />
@@ -73,42 +114,187 @@ export function ChatBubble({ message, onRegenerate }: { message: Message, onRege
               <div className="w-2 h-2 rounded-full bg-indigo-400/50 animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
           ) : (
-            <div className="prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:p-0 prose-pre:bg-transparent">
+            <div className="prose prose-invert max-w-none text-sm leading-relaxed overflow-hidden">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
                 components={{
                   code({ node, inline, className, children, ...props }: any) {
                     const match = /language-(\w+)/.exec(className || "");
+                    const lang = match ? match[1].toLowerCase() : "";
+                    const codeText = String(children).replace(/\n$/, "");
                     const id = Math.random().toString(36).substring(7);
-                    
-                    return !inline && match ? (
-                      <div className="relative group/code mt-4 mb-4 rounded-lg overflow-hidden border border-white/10 bg-[#1e1e1e]">
-                        <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10">
-                          <span className="text-xs font-mono text-gray-400">{match[1]}</span>
+
+                    if (lang === "mermaid") {
+                      return <MermaidDiagram chart={codeText} isStreaming={isStreaming} />;
+                    }
+
+                    const isBlock = !inline && (match || codeText.includes("\n"));
+
+                    return isBlock ? (
+                      <div className="relative group/code my-4 rounded-xl overflow-hidden border border-white/10 bg-[#18181b] shadow-md">
+                        <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10 text-xs font-mono text-gray-400">
+                          <span className="font-semibold text-indigo-400 uppercase tracking-wider">
+                            {match ? match[1] : "code"}
+                          </span>
                           <button
-                            onClick={() => copyToClipboard(String(children).replace(/\n$/, ""), id)}
-                            className="text-gray-400 hover:text-white transition-colors"
+                            type="button"
+                            onClick={() => copyToClipboard(codeText, id)}
+                            className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
                             title="Copy code"
                           >
-                            {copiedId === id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                            {copiedId === id ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span className="text-emerald-400 font-sans font-medium">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span className="font-sans font-medium">Copy</span>
+                              </>
+                            )}
                           </button>
                         </div>
                         <SyntaxHighlighter
                           {...props}
                           style={vscDarkPlus}
-                          language={match[1]}
+                          language={match ? match[1] : "text"}
                           PreTag="div"
-                          customStyle={{ margin: 0, padding: '1rem', background: 'transparent' }}
+                          customStyle={{ margin: 0, padding: "1rem", background: "transparent", fontSize: "0.85rem" }}
                         >
-                          {String(children).replace(/\n$/, "")}
+                          {codeText}
                         </SyntaxHighlighter>
                       </div>
                     ) : (
-                      <code {...props} className={`${className} bg-white/10 px-1.5 py-0.5 rounded-md text-indigo-300 font-mono text-sm`}>
+                      <code
+                        {...props}
+                        className="bg-white/10 px-1.5 py-0.5 rounded-md text-indigo-300 font-mono text-xs border border-white/10"
+                      >
                         {children}
                       </code>
                     );
-                  }
+                  },
+                  h1({ children }: any) {
+                    const id = getHeadingSlug(children, slugTracker);
+                    return (
+                      <h1 id={id} className="text-2xl font-bold text-white mt-6 mb-3 pb-1.5 border-b border-white/10 scroll-mt-4">
+                        {children}
+                      </h1>
+                    );
+                  },
+                  h2({ children }: any) {
+                    const id = getHeadingSlug(children, slugTracker);
+                    return (
+                      <h2 id={id} className="text-xl font-bold text-white mt-5 mb-2.5 pb-1 border-b border-white/10 scroll-mt-4">
+                        {children}
+                      </h2>
+                    );
+                  },
+                  h3({ children }: any) {
+                    const id = getHeadingSlug(children, slugTracker);
+                    return (
+                      <h3 id={id} className="text-lg font-semibold text-white mt-4 mb-2 scroll-mt-4">
+                        {children}
+                      </h3>
+                    );
+                  },
+                  h4({ children }: any) {
+                    const id = getHeadingSlug(children, slugTracker);
+                    return (
+                      <h4 id={id} className="text-base font-semibold text-gray-200 mt-3 mb-1.5 scroll-mt-4">
+                        {children}
+                      </h4>
+                    );
+                  },
+                  h5({ children }: any) {
+                    const id = getHeadingSlug(children, slugTracker);
+                    return (
+                      <h5 id={id} className="text-sm font-semibold text-gray-300 mt-2 mb-1 scroll-mt-4">
+                        {children}
+                      </h5>
+                    );
+                  },
+                  h6({ children }: any) {
+                    const id = getHeadingSlug(children, slugTracker);
+                    return (
+                      <h6 id={id} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-2 mb-1 scroll-mt-4">
+                        {children}
+                      </h6>
+                    );
+                  },
+                  p({ children }: any) {
+                    return <p className="my-2.5 leading-relaxed text-gray-200 text-sm">{children}</p>;
+                  },
+                  ul({ children }: any) {
+                    return <ul className="list-disc list-outside ml-5 space-y-1.5 my-3 text-gray-200 text-sm">{children}</ul>;
+                  },
+                  ol({ children }: any) {
+                    return <ol className="list-decimal list-outside ml-5 space-y-1.5 my-3 text-gray-200 text-sm">{children}</ol>;
+                  },
+                  li({ children }: any) {
+                    return <li className="text-sm text-gray-200 leading-relaxed">{children}</li>;
+                  },
+                  blockquote({ children }: any) {
+                    return (
+                      <blockquote className="border-l-4 border-indigo-500 bg-indigo-500/10 px-4 py-3 my-4 rounded-r-xl text-gray-300 italic text-sm">
+                        {children}
+                      </blockquote>
+                    );
+                  },
+                  table({ children }: any) {
+                    return (
+                      <div className="overflow-x-auto my-4 rounded-xl border border-white/10 bg-white/[0.02] shadow-sm">
+                        <table className="w-full text-left text-sm text-gray-300 border-collapse">{children}</table>
+                      </div>
+                    );
+                  },
+                  thead({ children }: any) {
+                    return <thead className="bg-white/5 border-b border-white/10 text-xs font-semibold text-gray-300 uppercase tracking-wider">{children}</thead>;
+                  },
+                  tbody({ children }: any) {
+                    return <tbody className="divide-y divide-white/5">{children}</tbody>;
+                  },
+                  tr({ children }: any) {
+                    return <tr className="hover:bg-white/[0.02] transition-colors">{children}</tr>;
+                  },
+                  th({ children }: any) {
+                    return <th className="px-4 py-3 text-left text-xs font-semibold text-gray-200 uppercase tracking-wider">{children}</th>;
+                  },
+                  td({ children }: any) {
+                    return <td className="px-4 py-3 text-sm text-gray-300 whitespace-normal">{children}</td>;
+                  },
+                  a({ href, children }: any) {
+                    const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
+                    return (
+                      <a
+                        href={href}
+                        target={isExternal ? "_blank" : undefined}
+                        rel={isExternal ? "noopener noreferrer" : undefined}
+                        className="text-indigo-400 hover:text-indigo-300 underline underline-offset-4 decoration-indigo-500/50 hover:decoration-indigo-400 transition-colors font-medium"
+                      >
+                        {children}
+                      </a>
+                    );
+                  },
+                  hr() {
+                    return <hr className="my-6 border-t border-white/10" />;
+                  },
+                  del({ children }: any) {
+                    return <del className="line-through text-gray-400">{children}</del>;
+                  },
+                  input({ node, ...props }: any) {
+                    if (props.type === "checkbox") {
+                      return (
+                        <input
+                          {...props}
+                          disabled
+                          className="mr-2 rounded border-white/20 bg-white/10 text-indigo-500 focus:ring-0 focus:ring-offset-0 cursor-default accent-indigo-500"
+                        />
+                      );
+                    }
+                    return <input {...props} />;
+                  },
                 }}
               >
                 {message.content}
