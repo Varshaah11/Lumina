@@ -12,7 +12,7 @@ from app.core.exceptions import (
     general_exception_handler
 )
 from app.database.init_db import init_db
-from app.api.routes import auth, health, chat
+from app.api.routes import auth, health, chat, tts
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,3 +51,4 @@ app.add_exception_handler(Exception, general_exception_handler)
 app.include_router(health.router, tags=["Health"])
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/chat", tags=["Chat"])
+app.include_router(tts.router, prefix="/tts", tags=["TTS"])
