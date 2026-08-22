@@ -88,6 +88,13 @@ function handleSSEStream(
   return controller;
 }
 
+export interface UploadFileResponse {
+  filename: string;
+  file_type: string;
+  extracted_text: string;
+  character_count: number;
+}
+
 export const chatService = {
   sendMessage: async (message: string): Promise<string> => {
     const data = await api<{ response: string }>("/chat/", {
@@ -95,6 +102,35 @@ export const chatService = {
       body: JSON.stringify({ message }),
     });
     return data.response;
+  },
+
+  uploadFile: async (file: File): Promise<UploadFileResponse> => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const token = Cookies.get("token");
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      let errorMsg = `Upload failed with status ${res.status}`;
+      try {
+        const errorData = await res.json();
+        if (errorData.detail) errorMsg = errorData.detail;
+      } catch {}
+      throw new Error(errorMsg);
+    }
+
+    return await res.json();
   },
 
   getChats: async () => {
@@ -111,12 +147,16 @@ export const chatService = {
     onChunk: (text: string) => void,
     onChatIdReceived: (id: string) => void,
     onError: (error: string) => void,
-    onComplete: () => void
+    onComplete: () => void,
+    docContext?: string | null
   ): AbortController => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const payload: any = { message };
     if (chatId) {
       payload.chat_id = parseInt(chatId, 10);
+    }
+    if (docContext) {
+      payload.doc_context = docContext;
     }
     return handleSSEStream(
       `${API_BASE_URL}/chat/stream`,

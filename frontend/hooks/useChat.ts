@@ -115,14 +115,41 @@ export function useChat() {
     };
   }, []);
 
-  const sendMessage = async (content: string) => {
-    console.log("[useChat] sendMessage() called with content:", content);
-    if (!content.trim() || isLoading) return;
+  const sendMessage = async (content: string, file?: File | null) => {
+    console.log("[useChat] sendMessage() called with content:", content, "file:", file?.name);
+    if ((!content.trim() && !file) || isLoading) return;
+
+    let userPromptText = content.trim();
+    let docContext: string | null = null;
+    let userVisibleContent = userPromptText;
+
+    if (file) {
+      setIsLoading(true);
+      try {
+        const uploadResult = await chatService.uploadFile(file);
+        docContext = `[Attached Document: ${uploadResult.filename}]\nExtracted Content:\n"""\n${uploadResult.extracted_text}\n"""`;
+        const promptPart = userPromptText || "Please analyze and summarize the contents of this document.";
+        userVisibleContent = `📄 ${uploadResult.filename}\n\n${promptPart}`;
+      } catch (err: any) {
+        console.warn("[useChat] File upload failed:", err);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "error",
+            content: err.message || "Failed to process attached document.",
+            timestamp: new Date(),
+          },
+        ]);
+        setIsLoading(false);
+        return;
+      }
+    }
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content,
+      content: userVisibleContent,
       timestamp: new Date(),
     };
 
@@ -144,7 +171,7 @@ export function useChat() {
     }
 
     abortControllerRef.current = chatService.streamMessage(
-      content,
+      userVisibleContent,
       activeChatId,
       (textChunk) => {
         console.log(
@@ -216,7 +243,8 @@ export function useChat() {
           window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
           window.dispatchEvent(new Event("chat-created"));
         }
-      }
+      },
+      docContext
     );
   };
 

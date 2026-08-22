@@ -52,8 +52,12 @@ class ChatService:
         # Yield chat_id so frontend knows which chat this is
         yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"
 
-        # Append latest user message to history
-        history.append({"role": "user", "content": request.message})
+        # Append latest user message to history (including hidden document context if provided)
+        if request.doc_context:
+            llm_user_content = f"{request.doc_context}\n\n{request.message}"
+        else:
+            llm_user_content = request.message
+        history.append({"role": "user", "content": llm_user_content})
 
         full_response = ""
         async for chunk in ai_service.stream_chat_response(

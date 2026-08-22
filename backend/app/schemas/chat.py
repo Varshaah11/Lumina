@@ -5,6 +5,7 @@ from datetime import datetime
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="The message from the user to the AI.")
     chat_id: Optional[int] = Field(None, description="The ID of the chat session, if continuing an existing one.")
+    doc_context: Optional[str] = Field(None, description="Optional extracted document content context.")
 
 class ChatRenameRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255, description="New title for the chat session.")

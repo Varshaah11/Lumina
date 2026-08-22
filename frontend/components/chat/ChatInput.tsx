@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Paperclip, Square, Mic } from "lucide-react";
+import { Send, Paperclip, Square, Mic, X, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Web Speech API TypeScript Declarations
@@ -52,18 +52,23 @@ declare global {
 }
 
 interface ChatInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, file?: File | null) => void;
   isLoading: boolean;
   onStop?: () => void;
 }
 
+const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
   const [input, setInput] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const initialInputRef = useRef<string>("");
   const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,6 +115,34 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
       }
     };
   }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      showNotice("Only PDF, DOCX, TXT, and Markdown files are supported.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      showNotice(`File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds 10 MB limit.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setSelectedFile(file);
+    setNoticeMessage(null);
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
@@ -221,12 +254,16 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !selectedFile) || isLoading) return;
     if (isListening) {
       stopListening();
     }
-    onSend(input);
+    onSend(input, selectedFile);
     setInput("");
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -241,6 +278,34 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 pb-6 pt-2 relative">
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".pdf,.docx,.txt,.md"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
+      {/* Selected File Preview Badge */}
+      {selectedFile && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 mb-2 shadow-sm animate-in fade-in slide-in-from-bottom-1">
+          <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="font-medium truncate max-w-[250px]">{selectedFile.name}</span>
+          <span className="text-gray-400 text-[10px]">
+            ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
+          </span>
+          <button
+            type="button"
+            onClick={handleRemoveFile}
+            className="ml-auto p-1 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+            title="Remove file"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Subtle indicator for Listening or Notices */}
       {isListening ? (
         <div className="absolute -top-7 left-4 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs animate-pulse">
@@ -261,8 +326,9 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
           type="button" 
           variant="ghost" 
           size="icon" 
+          onClick={() => fileInputRef.current?.click()}
           className="shrink-0 h-10 w-10 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl mb-0.5"
-          title="Attach file (UI only for now)"
+          title="Attach document (PDF, DOCX, TXT, MD)"
         >
           <Paperclip className="w-5 h-5" />
         </Button>
@@ -272,7 +338,7 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask Lumina anything..."
+          placeholder={selectedFile ? "Add a message about this file (optional)..." : "Ask Lumina anything..."}
           className="flex-1 max-h-[200px] min-h-[44px] bg-transparent border-0 resize-none py-3 px-2 text-white placeholder:text-gray-500 focus:ring-0 focus:outline-none"
           rows={1}
         />
@@ -312,9 +378,9 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
         ) : (
           <Button 
             type="submit" 
-            disabled={!input.trim()}
+            disabled={!input.trim() && !selectedFile}
             className={`shrink-0 h-10 w-10 rounded-xl mb-0.5 flex items-center justify-center transition-all ${
-              input.trim() 
+              input.trim() || selectedFile
                 ? "bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg" 
                 : "bg-white/5 text-gray-500"
             }`}
