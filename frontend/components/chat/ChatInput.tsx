@@ -289,20 +289,66 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
 
       {/* Selected File Preview Badge */}
       {selectedFile && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 mb-2 shadow-sm animate-in fade-in slide-in-from-bottom-1">
-          <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span className="font-medium truncate max-w-[250px]">{selectedFile.name}</span>
-          <span className="text-gray-400 text-[10px]">
-            ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
-          </span>
-          <button
-            type="button"
-            onClick={handleRemoveFile}
-            className="ml-auto p-1 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
-            title="Remove file"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+        <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 mb-2 shadow-sm animate-in fade-in slide-in-from-bottom-1">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="font-medium truncate max-w-[250px]">{selectedFile.name}</span>
+            <span className="text-gray-400 text-[10px]">
+              ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
+            </span>
+            <button
+              type="button"
+              onClick={handleRemoveFile}
+              className="ml-auto p-1 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+              title="Remove file"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-indigo-500/20">
+            <span className="text-[11px] text-gray-400 font-medium mr-1">Quick Actions:</span>
+            <button
+              type="button"
+              onClick={() => {
+                onSend("Summarize this document in 5 key points.", selectedFile);
+                handleRemoveFile();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+            >
+              ✨ Summarize
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onSend("Create exam-ready study notes from this document.", selectedFile);
+                handleRemoveFile();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+            >
+              📝 Make Notes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onSend("Explain the contents of this document like I am a beginner.", selectedFile);
+                handleRemoveFile();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+            >
+              💡 Explain
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onSend("Quiz me on this document with 5 questions. Ask one question at a time.", selectedFile);
+                handleRemoveFile();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+            >
+              🎯 Quiz Me
+            </button>
+          </div>
         </div>
       )}
 
