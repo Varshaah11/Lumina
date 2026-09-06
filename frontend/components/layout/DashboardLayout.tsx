@@ -7,7 +7,12 @@ import { Topbar } from "./Topbar";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+interface DashboardLayoutProps {
+  children: React.ReactNode;
+  noScroll?: boolean;
+}
+
+export function DashboardLayout({ children, noScroll = false }: DashboardLayoutProps) {
   const router = useRouter();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const { isLoading, isAuthenticated } = useAuth();
@@ -42,7 +47,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       
       <div className="flex-1 flex flex-col h-full overflow-hidden relative z-10">
         <Topbar />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-8">
+        <main
+          className={`flex-1 overflow-x-hidden ${
+            noScroll
+              ? "overflow-hidden px-4 md:px-8 pt-4 md:pt-6 pb-0"
+              : "overflow-y-auto p-6 md:p-8"
+          }`}
+        >
           <div className="max-w-6xl mx-auto h-full">
             {children}
           </div>

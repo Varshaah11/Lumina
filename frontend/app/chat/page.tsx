@@ -15,6 +15,7 @@ function ChatContent() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
+  const touchStartYRef = useRef<number | null>(null);
 
   const hasDocument = messages.some((m) => m.content.includes("📄 ") || m.content.includes("[Attached Document:"));
 
@@ -22,23 +23,56 @@ function ChatContent() {
     const container = scrollContainerRef.current;
     if (!container) return;
 
-    const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
-    isUserScrollingRef.current = !isAtBottom;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (distanceFromBottom > 30) {
+      isUserScrollingRef.current = true;
+    } else {
+      isUserScrollingRef.current = false;
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.deltaY < 0) {
+      isUserScrollingRef.current = true;
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartYRef.current = e.touches[0].clientY;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartYRef.current !== null) {
+      const deltaY = e.touches[0].clientY - touchStartYRef.current;
+      if (deltaY > 5) {
+        isUserScrollingRef.current = true;
+      }
+    }
+  };
+
+  const handleSendMessage = (content: string, file?: File | null) => {
+    isUserScrollingRef.current = false;
+    sendMessage(content, file);
+  };
+
+  const handleRegenerate = (messageId: string) => {
+    isUserScrollingRef.current = false;
+    regenerateResponse(messageId);
   };
 
   useEffect(() => {
     if (!isUserScrollingRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      bottomRef.current?.scrollIntoView({ behavior: isLoading ? "auto" : "smooth" });
     }
   }, [messages, isLoading]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] md:h-[calc(100vh-64px)] relative">
+    <div className="flex flex-col h-full min-h-0 relative">
       {/* Voice Assistant Fullscreen Overlay */}
       <VoiceAssistantOverlay
         isOpen={isVoiceModeOpen}
         onClose={() => setIsVoiceModeOpen(false)}
-        sendMessage={sendMessage}
+        sendMessage={handleSendMessage}
         stopGeneration={stopGeneration}
         isLoading={isLoading}
         messages={messages}
@@ -49,11 +83,14 @@ function ChatContent() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto scroll-smooth pb-4 px-2 md:px-0 no-scrollbar"
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        className="flex-1 min-h-0 overflow-y-auto scroll-smooth pb-4 px-2 md:px-0 no-scrollbar"
       >
         {messages.length === 0 ? (
           <div className="h-full pt-10">
-            <EmptyState onActionClick={sendMessage} />
+            <EmptyState onActionClick={handleSendMessage} />
           </div>
         ) : (
           <div className="flex flex-col min-h-full py-6 space-y-2">
@@ -65,7 +102,7 @@ function ChatContent() {
                   isStreaming={isLoading}
                   onRegenerate={
                     message.role === "assistant" && message.content !== "" && !isLoading
-                      ? () => regenerateResponse(message.id)
+                      ? () => handleRegenerate(message.id)
                       : undefined
                   }
                 />
@@ -77,9 +114,9 @@ function ChatContent() {
       </div>
 
       {/* Sticky Input Area */}
-      <div className="sticky bottom-0 left-0 right-0 pt-2 bg-gradient-to-t from-black via-black to-transparent">
+      <div className="shrink-0 pt-2 bg-gradient-to-t from-black via-black to-transparent z-10">
         <ChatInput
-          onSend={sendMessage}
+          onSend={handleSendMessage}
           isLoading={isLoading}
           onStop={stopGeneration}
           onOpenVoiceMode={() => setIsVoiceModeOpen(true)}
@@ -91,7 +128,7 @@ function ChatContent() {
 
 export default function ChatPage() {
   return (
-    <DashboardLayout>
+    <DashboardLayout noScroll>
       <Suspense fallback={<div className="flex-1 flex items-center justify-center text-gray-500">Loading chat...</div>}>
         <ChatContent />
       </Suspense>
