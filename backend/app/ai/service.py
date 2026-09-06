@@ -46,7 +46,14 @@ class AIService:
 
         try:
             response = await ollama_client.list_models()
-            models = [m.get("name", "") for m in response.get("models", [])]
+            raw_models = getattr(response, "models", None)
+            if raw_models is None:
+                raw_models = response.get("models", []) if isinstance(response, dict) else []
+
+            models = [
+                getattr(m, "model", None) or (m.get("model") or m.get("name", "") if isinstance(m, dict) else "")
+                for m in raw_models
+            ]
 
             # Ollama model names might include tags (e.g., 'llama3.1:8b-instruct-q4_0')
             # Exact match is safest for standard pulls

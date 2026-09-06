@@ -1,11 +1,12 @@
 import ollama
 import logging
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class OllamaClient:
-    def __init__(self, host: str = "http://localhost:11434"):
-        self.host = host
+    def __init__(self, host: str | None = None):
+        self.host = host or settings.OLLAMA_HOST
         # Configure client here if needed for custom host, but defaults to localhost:11434
         self.client = ollama.AsyncClient(host=self.host)
 

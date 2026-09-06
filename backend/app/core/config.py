@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080 # 7 days by default
     
     DATABASE_URL: str
+    OLLAMA_HOST: str = "http://localhost:11434"
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
