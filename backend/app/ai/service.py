@@ -100,40 +100,6 @@ class AIService:
         return fallback_title
 
     @staticmethod
-    async def get_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User", is_voice: bool = False) -> str:
-        """
-        Builds the conversation history and queries the LLM.
-        """
-        system_prompt = get_system_prompt(user_name, is_voice=is_voice)
-        model = await AIService.get_active_model()
-
-        messages = [{"role": "system", "content": system_prompt}]
-        if messages_history:
-            messages.extend(messages_history)
-        elif user_message:
-            messages.append({"role": "user", "content": user_message})
-
-        try:
-            # We are using stream=False for Phase 6.1, preparing for True in later phases.
-            response = await ollama_client.generate_chat(model=model, messages=messages, stream=False)
-
-            if 'message' in response and 'content' in response['message']:
-                return response['message']['content']
-            else:
-                logger.error(f"Unexpected response format from Ollama: {response}")
-                raise Exception("Invalid response format from AI model.")
-
-        except ConnectError:
-            logger.error("Could not connect to Ollama. Is it running?")
-            raise Exception("AI backend is currently offline. Please try again later.")
-        except Exception as e:
-            logger.error(f"AI Service Error: {str(e)}")
-            error_msg = str(e)
-            if "not found" in error_msg.lower():
-                raise Exception(f"Model {model} not found in local Ollama instance.")
-            raise Exception(f"An error occurred while generating the response: {error_msg}")
-
-    @staticmethod
     async def stream_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User", is_voice: bool = False):
         """
         Builds the conversation history and streams the query to the LLM.

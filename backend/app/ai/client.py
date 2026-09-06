@@ -10,16 +10,21 @@ class OllamaClient:
         # Configure client here if needed for custom host, but defaults to localhost:11434
         self.client = ollama.AsyncClient(host=self.host)
 
-    async def generate_chat(self, model: str, messages: list[dict], stream: bool = False):
+    async def generate_chat(self, model: str, messages: list[dict], stream: bool = False, options: dict | None = None):
         """
         Sends a chat completion request to the Ollama server.
         messages format: [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
         """
+        chat_options = {"num_ctx": settings.OLLAMA_NUM_CTX}
+        if options:
+            chat_options.update(options)
+
         try:
             response = await self.client.chat(
                 model=model,
                 messages=messages,
-                stream=stream
+                stream=stream,
+                options=chat_options
             )
             return response
         except Exception as e:

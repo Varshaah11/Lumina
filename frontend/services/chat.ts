@@ -96,14 +96,6 @@ export interface UploadFileResponse {
 }
 
 export const chatService = {
-  sendMessage: async (message: string): Promise<string> => {
-    const data = await api<{ response: string }>("/chat/", {
-      method: "POST",
-      body: JSON.stringify({ message }),
-    });
-    return data.response;
-  },
-
   uploadFile: async (file: File): Promise<UploadFileResponse> => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const formData = new FormData();

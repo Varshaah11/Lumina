@@ -1,24 +1,16 @@
 import json
 from sqlalchemy.orm import Session, joinedload
 from app.ai.service import ai_service
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest
 from app.schemas.user import UserResponse
 from app.models.chat import Chat
 from app.models.message import Message
 
-class ChatService:
-    @staticmethod
-    async def process_chat(request: ChatRequest, current_user: UserResponse) -> ChatResponse:
-        """
-        Processes a chat message from a user and returns the AI's response.
-        """
-        response_content = await ai_service.get_chat_response(
-            user_message=request.message,
-            user_name=current_user.name,
-            is_voice=bool(request.is_voice)
-        )
-        return ChatResponse(response=response_content)
+# Context window bounds
+MAX_HISTORY_MESSAGES = 20  # Retain up to 20 most recent messages (approx 10 conversation turns)
+MAX_DOC_CONTEXT_CHARS = 12000  # Cap attached document context to ~3,000 tokens to preserve context budget
 
+class ChatService:
     @staticmethod
     async def process_streaming_chat(request: ChatRequest, current_user: UserResponse, db: Session):
         """
@@ -41,9 +33,16 @@ class ChatService:
                 yield f"data: {json.dumps({'error': 'Chat not found'})}\n\n"
                 return
 
-        # Fetch existing history for this chat prior to saving new message
-        existing_msgs = db.query(Message).filter(Message.chat_id == chat_id).order_by(Message.created_at.asc()).all()
-        history = [{"role": m.role, "content": m.content} for m in existing_msgs]
+        # Fetch existing history for this chat prior to saving new message (bounded to recent turns)
+        recent_msgs = (
+            db.query(Message)
+            .filter(Message.chat_id == chat_id)
+            .order_by(Message.created_at.desc())
+            .limit(MAX_HISTORY_MESSAGES)
+            .all()
+        )
+        recent_msgs.reverse()
+        history = [{"role": m.role, "content": m.content} for m in recent_msgs]
 
         # Save user message
         user_msg = Message(chat_id=chat_id, role="user", content=request.message)
@@ -53,9 +52,15 @@ class ChatService:
         # Yield chat_id so frontend knows which chat this is
         yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"
 
-        # Append latest user message to history (including hidden document context if provided)
+        # Append latest user message to history (including bounded document context if provided)
         if request.doc_context:
-            llm_user_content = f"{request.doc_context}\n\n{request.message}"
+            doc_text = request.doc_context
+            if len(doc_text) > MAX_DOC_CONTEXT_CHARS:
+                doc_text = (
+                    doc_text[:MAX_DOC_CONTEXT_CHARS]
+                    + "\n\n[...Document content truncated to fit context window...]"
+                )
+            llm_user_content = f"{doc_text}\n\n{request.message}"
         else:
             llm_user_content = request.message
         history.append({"role": "user", "content": llm_user_content})
@@ -161,6 +166,8 @@ class ChatService:
             return
 
         history_msgs = existing_msgs[:target_index]
+        if len(history_msgs) > MAX_HISTORY_MESSAGES:
+            history_msgs = history_msgs[-MAX_HISTORY_MESSAGES:]
         history = [{"role": m.role, "content": m.content} for m in history_msgs]
 
         yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"

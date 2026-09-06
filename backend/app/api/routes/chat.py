@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from typing import List
 from sqlalchemy.orm import Session
-from app.schemas.chat import ChatRequest, ChatResponse, ChatResponseDB, ChatHistoryResponseDB, ChatRenameRequest
+from app.schemas.chat import ChatRequest, ChatResponseDB, ChatHistoryResponseDB, ChatRenameRequest
 from app.schemas.user import UserResponse
 from app.services.chat_service import chat_service
 from app.api.dependencies import get_current_user, get_db
@@ -28,17 +28,6 @@ def get_chat_history(
     if not chat:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
     return chat
-
-@router.post("/", response_model=ChatResponse)
-async def chat_endpoint(
-    request: ChatRequest,
-    current_user: UserResponse = Depends(get_current_user)
-):
-    """
-    Send a message to the AI and get a response.
-    Requires authentication.
-    """
-    return await chat_service.process_chat(request, current_user)
 
 @router.post("/stream")
 async def chat_stream_endpoint(

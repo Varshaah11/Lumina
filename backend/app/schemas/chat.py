@@ -11,9 +11,6 @@ class ChatRequest(BaseModel):
 class ChatRenameRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255, description="New title for the chat session.")
 
-class ChatResponse(BaseModel):
-    response: str = Field(..., description="The AI's generated response.")
-
 class MessageResponseDB(BaseModel):
     id: int
     role: str
