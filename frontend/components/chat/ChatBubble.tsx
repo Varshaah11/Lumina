@@ -444,7 +444,7 @@ export function ChatBubble({
       </div>
 
       {/* Message Content */}
-      <div className={`flex flex-col max-w-[85%] ${isUser ? "items-end" : "items-start"}`}>
+      <div className={`flex flex-col max-w-[85%] ${isUser ? "items-end" : "items-start"} group`}>
         <div className="flex items-center gap-2 mb-1 px-1">
           <span className="text-sm font-medium text-gray-300">
             {isUser ? user?.name || "You" : isError ? "System Error" : "Lumina"}
@@ -455,7 +455,7 @@ export function ChatBubble({
         </div>
 
         <div
-          className={`px-5 py-4 rounded-2xl relative group ${
+          className={`px-5 py-4 rounded-2xl relative ${
             isUser
               ? "bg-indigo-500 text-white rounded-tr-sm shadow-[0_0_15px_rgba(99,102,241,0.2)]"
               : isError
@@ -659,54 +659,60 @@ export function ChatBubble({
               </ReactMarkdown>
             </div>
           )}
+        </div>
 
-          {/* Assistant Message Actions */}
-          {!isUser && !isError && (
-            <div className="absolute -bottom-10 left-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+        {/* Assistant Message Actions */}
+        {!isUser && !isError && (
+          <div
+            className={`mt-1.5 flex items-center gap-1 transition-opacity ${
+              isSpeaking || isPendingTTS
+                ? "opacity-100"
+                : "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100"
+            }`}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
+              onClick={() => copyToClipboard(message.content)}
+              title="Copy message"
+            >
+              {copiedId === "msg" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </Button>
+
+            {!isStreaming && message.content.trim() !== "" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-8 w-8 rounded-lg transition-all ${
+                  isSpeaking || isPendingTTS
+                    ? "text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20"
+                    : "text-gray-400 hover:text-white hover:bg-white/10"
+                }`}
+                onClick={handleToggleSpeech}
+                title={isSpeaking || isPendingTTS ? "Stop speaking" : "Speak response"}
+              >
+                {isSpeaking || isPendingTTS ? (
+                  <Square className="w-3.5 h-3.5 fill-current animate-pulse text-red-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4" />
+                )}
+              </Button>
+            )}
+
+            {onRegenerate && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
-                onClick={() => copyToClipboard(message.content)}
-                title="Copy message"
+                onClick={onRegenerate}
+                title="Regenerate response"
               >
-                {copiedId === "msg" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                <RotateCcw className="w-4 h-4" />
               </Button>
-
-              {!isStreaming && message.content.trim() !== "" && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-8 w-8 rounded-lg transition-all ${
-                    isSpeaking || isPendingTTS
-                      ? "text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20"
-                      : "text-gray-400 hover:text-white hover:bg-white/10"
-                  }`}
-                  onClick={handleToggleSpeech}
-                  title={isSpeaking || isPendingTTS ? "Stop speaking" : "Speak response"}
-                >
-                  {isSpeaking || isPendingTTS ? (
-                    <Square className="w-3.5 h-3.5 fill-current animate-pulse text-red-400" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
-                </Button>
-              )}
-
-              {onRegenerate && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
-                  onClick={onRegenerate}
-                  title="Regenerate response"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );
