@@ -14,11 +14,14 @@ export default function ProfilePage() {
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto pb-12">
-        <PageHeader 
-          title="Profile" 
+        <PageHeader
+          title="Profile"
           description="Manage your personal information and account settings."
           action={
-            <Button variant="outline" className="border-white/20 text-white hover:bg-white/10">
+            <Button
+              variant="outline"
+              className="bg-white text-black border-white hover:bg-black hover:text-white"
+            >
               <Edit2 className="w-4 h-4 mr-2" />
               Edit Profile
             </Button>
@@ -47,7 +50,7 @@ export default function ProfilePage() {
                     <div className="text-white font-medium text-lg mt-1">{user?.name || "Not set"}</div>
                   )}
                 </div>
-                
+
                 <div className="h-px w-full bg-white/5" />
 
                 <div>
@@ -67,8 +70,8 @@ export default function ProfilePage() {
                   <Skeleton className="h-6 w-32 bg-white/10 mt-2" />
                 ) : (
                   <div className="text-white font-medium text-lg mt-2">
-                    {user?.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { 
-                      year: 'numeric', month: 'long', day: 'numeric' 
+                    {user?.created_at ? new Date(user.created_at).toLocaleDateString(undefined, {
+                      year: 'numeric', month: 'long', day: 'numeric'
                     }) : "Unknown"}
                   </div>
                 )}

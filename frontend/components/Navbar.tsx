@@ -111,20 +111,20 @@ export function Navbar() {
                     </div>
                   </div>
                   <DropdownMenuSeparator className="bg-white/10" />
-                  <DropdownMenuItem className="hover:bg-white/10 focus:bg-white/10 cursor-pointer p-0">
+                  <DropdownMenuItem className="hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-highlighted:text-white not-data-[variant=destructive]:focus:**:text-white not-data-[variant=destructive]:hover:**:text-white focus:**:text-white hover:**:text-white data-highlighted:**:text-white cursor-pointer p-0">
                     <Link href="/profile" className="flex items-center w-full px-2 py-1.5">
                       <UserIcon className="mr-2 h-4 w-4" />
                       <span>Profile</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="hover:bg-white/10 focus:bg-white/10 cursor-pointer p-0">
+                  <DropdownMenuItem className="hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-highlighted:text-white not-data-[variant=destructive]:focus:**:text-white not-data-[variant=destructive]:hover:**:text-white focus:**:text-white hover:**:text-white data-highlighted:**:text-white cursor-pointer p-0">
                     <Link href="/settings" className="flex items-center w-full px-2 py-1.5">
                       <Settings className="mr-2 h-4 w-4" />
                       <span>Settings</span>
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-white/10" />
-                  <DropdownMenuItem onClick={logout} className="text-red-400 hover:bg-white/10 focus:bg-white/10 hover:text-red-300 cursor-pointer">
+                  <DropdownMenuItem onClick={logout} className="text-red-400 hover:bg-white/10 focus:bg-white/10 hover:text-red-400 focus:text-red-400 data-highlighted:text-red-400 not-data-[variant=destructive]:focus:**:text-red-400 not-data-[variant=destructive]:hover:**:text-red-400 focus:**:text-red-400 hover:**:text-red-400 data-highlighted:**:text-red-400 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Log out</span>
                   </DropdownMenuItem>

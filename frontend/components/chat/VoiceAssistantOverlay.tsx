@@ -193,11 +193,10 @@ export function VoiceAssistantOverlay({
             {recentMessages.map((msg) => (
               <div
                 key={msg.id}
-                className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed max-w-[95%] backdrop-blur-xl border shadow-sm ${
-                  msg.role === "user"
+                className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed max-w-[95%] backdrop-blur-xl border shadow-sm ${msg.role === "user"
                     ? "ml-auto bg-indigo-500/20 border-indigo-500/30 text-indigo-100 rounded-tr-sm"
                     : "mr-auto bg-white/5 border-white/10 text-gray-200 rounded-tl-sm"
-                }`}
+                  }`}
               >
                 <span className="text-[10px] font-bold block mb-1 uppercase tracking-wider opacity-60">
                   {msg.role === "user" ? "You" : "Lumina"}
@@ -315,11 +314,10 @@ export function VoiceAssistantOverlay({
           <button
             type="button"
             onClick={toggleLoop}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all ${
-              isLoopEnabled
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all ${isLoopEnabled
                 ? "bg-indigo-500/20 border border-indigo-500/30 text-indigo-300"
                 : "bg-white/5 border border-white/10 text-gray-400 hover:text-white"
-            }`}
+              }`}
             title="Auto-resume microphone after Lumina speaks"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoopEnabled ? "text-indigo-400" : ""}`} />
@@ -366,7 +364,7 @@ export function VoiceAssistantOverlay({
           <Button
             variant="ghost"
             onClick={handleExit}
-            className="text-xs text-gray-400 hover:text-white transition-colors"
+            className="text-xs text-gray-400 hover:text-black transition-colors"
           >
             Exit Voice Mode
           </Button>
