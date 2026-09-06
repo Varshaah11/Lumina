@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
   MessageSquarePlus,
+  History,
   Settings,
   LogOut,
   Sparkles,
@@ -190,6 +191,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const topItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "New Chat", href: "/chat", icon: MessageSquarePlus },
+    { name: "History", href: "/history", icon: History },
   ];
 
   const bottomItems = [
@@ -235,7 +237,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
         <div className="flex-1 overflow-y-auto py-6 px-3 space-y-6 no-scrollbar flex flex-col">
           <div className="space-y-2">
             {topItems.map((item) => {
-              const isActive = pathname === item.href && !currentChatId;
+              const isActive = pathname === item.href && (item.href === "/chat" ? !currentChatId : true);
               return (
                 <Link
                   key={item.name}
