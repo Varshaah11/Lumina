@@ -1,23 +1,27 @@
 "use client";
 
-import { useRef, useEffect, Suspense } from "react";
+import { useRef, useEffect, useState, Suspense } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { EmptyState } from "@/components/chat/EmptyState";
+import { VoiceAssistantOverlay } from "@/components/chat/VoiceAssistantOverlay";
 import { useChat } from "@/hooks/useChat";
 import { motion, AnimatePresence } from "framer-motion";
 
 function ChatContent() {
   const { messages, isLoading, sendMessage, stopGeneration, regenerateResponse } = useChat();
+  const [isVoiceModeOpen, setIsVoiceModeOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
 
+  const hasDocument = messages.some((m) => m.content.includes("📄 ") || m.content.includes("[Attached Document:"));
+
   const handleScroll = () => {
     const container = scrollContainerRef.current;
     if (!container) return;
-    
+
     const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
     isUserScrollingRef.current = !isAtBottom;
   };
@@ -30,8 +34,19 @@ function ChatContent() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] md:h-[calc(100vh-64px)] relative">
+      {/* Voice Assistant Fullscreen Overlay */}
+      <VoiceAssistantOverlay
+        isOpen={isVoiceModeOpen}
+        onClose={() => setIsVoiceModeOpen(false)}
+        sendMessage={sendMessage}
+        stopGeneration={stopGeneration}
+        isLoading={isLoading}
+        messages={messages}
+        hasDocument={hasDocument}
+      />
+
       {/* Chat Area */}
-      <div 
+      <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto scroll-smooth pb-4 px-2 md:px-0 no-scrollbar"
@@ -63,7 +78,12 @@ function ChatContent() {
 
       {/* Sticky Input Area */}
       <div className="sticky bottom-0 left-0 right-0 pt-2 bg-gradient-to-t from-black via-black to-transparent">
-        <ChatInput onSend={sendMessage} isLoading={isLoading} onStop={stopGeneration} />
+        <ChatInput
+          onSend={sendMessage}
+          isLoading={isLoading}
+          onStop={stopGeneration}
+          onOpenVoiceMode={() => setIsVoiceModeOpen(true)}
+        />
       </div>
     </div>
   );

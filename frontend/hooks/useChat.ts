@@ -115,8 +115,8 @@ export function useChat() {
     };
   }, []);
 
-  const sendMessage = async (content: string, file?: File | null) => {
-    console.log("[useChat] sendMessage() called with content:", content, "file:", file?.name);
+  const sendMessage = async (content: string, file?: File | null, isVoice: boolean = false) => {
+    console.log("[useChat] sendMessage() called with content:", content, "file:", file?.name, "isVoice:", isVoice);
     if ((!content.trim() && !file) || isLoading) return;
 
     let userPromptText = content.trim();
@@ -244,7 +244,8 @@ export function useChat() {
           window.dispatchEvent(new Event("chat-created"));
         }
       },
-      docContext
+      docContext,
+      isVoice
     );
   };
 

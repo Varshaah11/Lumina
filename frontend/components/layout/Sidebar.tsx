@@ -243,6 +243,10 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                   onClick={() => {
                     if (item.name === "New Chat") {
                       setSearchQuery("");
+                      if (pathname === "/chat") {
+                        window.history.pushState(null, "", "/chat");
+                        window.dispatchEvent(new PopStateEvent("popstate"));
+                      }
                     }
                   }}
                   className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${

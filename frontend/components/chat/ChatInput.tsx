@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Paperclip, Square, Mic, X, FileText } from "lucide-react";
+import { Send, Paperclip, Square, Mic, X, FileText, AudioLines } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSearchParams } from "next/navigation";
 
 // Web Speech API TypeScript Declarations
 interface SpeechRecognitionErrorEvent extends Event {
@@ -55,23 +56,40 @@ interface ChatInputProps {
   onSend: (message: string, file?: File | null) => void;
   isLoading: boolean;
   onStop?: () => void;
+  onOpenVoiceMode?: () => void;
 }
 
 const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
-export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
+export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
+  const searchParams = useSearchParams();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const initialInputRef = useRef<string>("");
   const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-trigger file upload or prompt population if query params present
+  useEffect(() => {
+    if (!searchParams) return;
+    const action = searchParams.get("action");
+    const promptParam = searchParams.get("prompt");
+    if (action === "upload" && fileInputRef.current) {
+      setTimeout(() => {
+        fileInputRef.current?.click();
+      }, 300);
+    }
+    if (promptParam) {
+      setInput(decodeURIComponent(promptParam));
+    }
+  }, [searchParams]);
 
   // Check Web Speech API support on mount
   useEffect(() => {
@@ -388,6 +406,19 @@ export function ChatInput({ onSend, isLoading, onStop }: ChatInputProps) {
           className="flex-1 max-h-[200px] min-h-[44px] bg-transparent border-0 resize-none py-3 px-2 text-white placeholder:text-gray-500 focus:ring-0 focus:outline-none"
           rows={1}
         />
+
+        {onOpenVoiceMode && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onOpenVoiceMode}
+            className="shrink-0 h-10 w-10 rounded-xl mb-0.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20 shadow-sm"
+            title="Launch Voice Assistant Mode"
+          >
+            <AudioLines className="w-5 h-5" />
+          </Button>
+        )}
 
         <Button
           type="button"

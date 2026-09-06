@@ -1,6 +1,7 @@
 import logging
 import json
 import re
+from typing import Optional
 from httpx import ConnectError
 from app.ai.client import ollama_client
 from app.ai.prompts import get_system_prompt
@@ -33,22 +34,30 @@ def sanitize_title(title_text: str, fallback: str) -> str:
 
     return cleaned if len(cleaned) >= 2 else fallback
 
+_cached_active_model: Optional[str] = None
+
 class AIService:
     @staticmethod
     async def get_active_model() -> str:
-        """Checks if the primary model is available, otherwise returns the fallback."""
+        """Checks if the primary model is available, otherwise returns the fallback (cached)."""
+        global _cached_active_model
+        if _cached_active_model is not None:
+            return _cached_active_model
+
         try:
             response = await ollama_client.list_models()
             models = [m.get("name", "") for m in response.get("models", [])]
-            
+
             # Ollama model names might include tags (e.g., 'llama3.1:8b-instruct-q4_0')
             # Exact match is safest for standard pulls
             if PRIMARY_MODEL in models:
-                return PRIMARY_MODEL
-            return FALLBACK_MODEL
+                _cached_active_model = PRIMARY_MODEL
+            else:
+                _cached_active_model = FALLBACK_MODEL
         except Exception:
-            # If listing fails but we can connect, assume fallback
-            return FALLBACK_MODEL
+            _cached_active_model = FALLBACK_MODEL
+
+        return _cached_active_model
 
     @staticmethod
     async def generate_title(user_message: str) -> str:
@@ -84,29 +93,29 @@ class AIService:
         return fallback_title
 
     @staticmethod
-    async def get_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User") -> str:
+    async def get_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User", is_voice: bool = False) -> str:
         """
         Builds the conversation history and queries the LLM.
         """
-        system_prompt = get_system_prompt(user_name)
+        system_prompt = get_system_prompt(user_name, is_voice=is_voice)
         model = await AIService.get_active_model()
-        
+
         messages = [{"role": "system", "content": system_prompt}]
         if messages_history:
             messages.extend(messages_history)
         elif user_message:
             messages.append({"role": "user", "content": user_message})
-        
+
         try:
             # We are using stream=False for Phase 6.1, preparing for True in later phases.
             response = await ollama_client.generate_chat(model=model, messages=messages, stream=False)
-            
+
             if 'message' in response and 'content' in response['message']:
                 return response['message']['content']
             else:
                 logger.error(f"Unexpected response format from Ollama: {response}")
                 raise Exception("Invalid response format from AI model.")
-                
+
         except ConnectError:
             logger.error("Could not connect to Ollama. Is it running?")
             raise Exception("AI backend is currently offline. Please try again later.")
@@ -118,27 +127,27 @@ class AIService:
             raise Exception(f"An error occurred while generating the response: {error_msg}")
 
     @staticmethod
-    async def stream_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User"):
+    async def stream_chat_response(user_message: str = None, messages_history: list = None, user_name: str = "User", is_voice: bool = False):
         """
         Builds the conversation history and streams the query to the LLM.
         """
-        system_prompt = get_system_prompt(user_name)
+        system_prompt = get_system_prompt(user_name, is_voice=is_voice)
         model = await AIService.get_active_model()
-        
+
         messages = [{"role": "system", "content": system_prompt}]
         if messages_history:
             messages.extend(messages_history)
         elif user_message:
             messages.append({"role": "user", "content": user_message})
-        
+
         try:
             response_stream = await ollama_client.generate_chat(model=model, messages=messages, stream=True)
-            
+
             async for chunk in response_stream:
                 if 'message' in chunk and 'content' in chunk['message']:
                     token = chunk['message']['content']
                     yield f"data: {json.dumps({'token': token})}\n\n"
-                    
+
         except ConnectError:
             logger.error("Could not connect to Ollama. Is it running?")
             payload = {"error": "Lumina couldn't connect. Please try again later."}

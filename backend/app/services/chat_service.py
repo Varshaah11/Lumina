@@ -14,7 +14,8 @@ class ChatService:
         """
         response_content = await ai_service.get_chat_response(
             user_message=request.message,
-            user_name=current_user.name
+            user_name=current_user.name,
+            is_voice=bool(request.is_voice)
         )
         return ChatResponse(response=response_content)
 
@@ -62,7 +63,8 @@ class ChatService:
         full_response = ""
         async for chunk in ai_service.stream_chat_response(
             messages_history=history,
-            user_name=current_user.name
+            user_name=current_user.name,
+            is_voice=bool(request.is_voice)
         ):
             yield chunk
             if chunk.startswith("data: "):

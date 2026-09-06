@@ -148,7 +148,8 @@ export const chatService = {
     onChatIdReceived: (id: string) => void,
     onError: (error: string) => void,
     onComplete: () => void,
-    docContext?: string | null
+    docContext?: string | null,
+    isVoice?: boolean
   ): AbortController => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const payload: any = { message };
@@ -157,6 +158,9 @@ export const chatService = {
     }
     if (docContext) {
       payload.doc_context = docContext;
+    }
+    if (isVoice) {
+      payload.is_voice = true;
     }
     return handleSSEStream(
       `${API_BASE_URL}/chat/stream`,
