@@ -12,6 +12,7 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { Button } from "@/components/ui/button";
 import { MermaidDiagram } from "./MermaidDiagram";
 import Cookies from "js-cookie";
+import { sanitizeTextForTTS } from "@/lib/speechSanitizer";
 
 let currentAbortController: AbortController | null = null;
 let activeStopCallback: (() => void) | null = null;
@@ -113,44 +114,6 @@ export function getPreferredFemaleVoice(): SpeechSynthesisVoice | null {
 
   // Tier 3: Browser/OS default voice if no suitable female English voice is available
   return voices.find((v) => v.default) || voices[0] || null;
-}
-
-export function cleanTextForSpeech(text: string): string {
-  if (!text) return "";
-
-  return (
-    text
-      // 1. Remove Mermaid code blocks: ```mermaid ... ```
-      .replace(/```mermaid[\s\S]*?```/gi, "")
-      // 2. Remove all other fenced code blocks: ```lang ... ``` or ``` ... ```
-      .replace(/```[\s\S]*?```/g, "")
-      // 3. Remove standalone setext heading underlines (=== or ---) & separator lines (---, ***, ___)
-      .replace(/^[ \t]*={2,}[ \t]*$/gm, "")
-      .replace(/^[ \t]*[-*_]{2,}[ \t]*$/gm, "")
-      // 4. Remove inline code snippets: `code`
-      .replace(/`([^`]+)`/g, "$1")
-      // 5. Remove Markdown images: ![alt](url)
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "")
-      // 6. Remove Markdown links, preserving readable anchor text: [text](url) -> text
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-      // 7. Remove HTML tags
-      .replace(/<[^>]*>/g, "")
-      // 8. Remove ATX headers: # Header -> Header
-      .replace(/^#{1,6}\s+/gm, "")
-      // 9. Remove blockquotes: > Quote -> Quote
-      .replace(/^>\s+/gm, "")
-      // 10. Remove bold/italic/strikethrough markers: **bold**, *italic*, ~~strike~~
-      .replace(/(\*\*|__|\*|_|~~)(.*?)\1/g, "$2")
-      // 11. Preserve list item content while removing list bullet markers
-      .replace(/^[\s]*[-*+]\s+/gm, "")
-      // 12. Preserve list item content while removing numbered list markers
-      .replace(/^[\s]*\d+\.\s+/gm, "")
-      // 13. Collapse multiple newlines into clean speech pauses
-      .replace(/\n{2,}/g, ". ")
-      .replace(/\n/g, " ")
-      .replace(/\s{2,}/g, " ")
-      .trim()
-  );
 }
 
 function getHeadingSlug(children: any, slugTracker: Map<string, number>): string {
@@ -330,7 +293,7 @@ export function ChatBubble({
 
     stopActiveSpeech();
 
-    const cleanText = cleanTextForSpeech(message.content);
+    const cleanText = sanitizeTextForTTS(message.content);
     if (!cleanText.trim()) return;
 
     const requestId = ++globalRequestId;

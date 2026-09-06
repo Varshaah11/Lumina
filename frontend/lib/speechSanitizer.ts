@@ -7,7 +7,10 @@ export function sanitizeTextForTTS(rawText: string): string {
 
   let text = rawText;
 
-  // 1. Remove or summarize complete fenced code blocks ```lang ... ```
+  // 1. Silently remove Mermaid diagram blocks: ```mermaid ... ```
+  text = text.replace(/```\s*mermaid[\s\S]*?```/gi, "");
+
+  // 2. Remove or summarize complete fenced code blocks ```lang ... ```
   text = text.replace(/```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (match, code) => {
     if (
       code.includes("def ") ||
