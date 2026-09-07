@@ -1,15 +1,22 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Menu, Sparkles, LogOut, User as UserIcon, LayoutDashboard, MessageSquarePlus, History, Settings } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export function Topbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -29,14 +36,18 @@ export function Topbar() {
       <div className="flex items-center gap-4">
         {/* Mobile menu trigger */}
         <div className="md:hidden">
-          <Sheet>
+          <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 h-9 w-9 text-gray-400 hover:text-white hover:bg-white/10">
               <Menu className="w-6 h-6" />
               <span className="sr-only">Toggle menu</span>
             </SheetTrigger>
             <SheetContent side="left" className="bg-black border-r border-white/10 p-0 w-72">
               <div className="h-20 flex items-center px-6 border-b border-white/5">
-                <Link href="/dashboard" className="flex items-center gap-3">
+                <Link
+                  href="/dashboard"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3"
+                >
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
                     <Sparkles className="w-5 h-5 text-white" />
                   </div>
@@ -54,6 +65,14 @@ export function Topbar() {
                       <Link
                         key={item.name}
                         href={item.href}
+                        onClick={(e) => {
+                          setIsOpen(false);
+                          if (item.name === "New Chat") {
+                            e.preventDefault();
+                            router.push("/chat");
+                            window.dispatchEvent(new Event("new-chat"));
+                          }
+                        }}
                         className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                           isActive 
                             ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400" 
@@ -68,7 +87,10 @@ export function Topbar() {
                 </div>
                 <div className="pt-4 border-t border-white/5">
                   <button
-                    onClick={logout}
+                    onClick={() => {
+                      setIsOpen(false);
+                      logout();
+                    }}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10 hover:text-red-300"
                   >
                     <LogOut className="w-5 h-5" />

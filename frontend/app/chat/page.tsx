@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -8,9 +9,12 @@ import { EmptyState } from "@/components/chat/EmptyState";
 import { VoiceAssistantOverlay } from "@/components/chat/VoiceAssistantOverlay";
 import { useChat } from "@/hooks/useChat";
 import { motion, AnimatePresence } from "framer-motion";
+import { Loader2 } from "lucide-react";
 
 function ChatContent() {
-  const { messages, isLoading, sendMessage, stopGeneration, regenerateResponse, retryLastMessage } = useChat();
+  const searchParams = useSearchParams();
+  const chatId = searchParams?.get("chatId");
+  const { messages, isLoading, isUploading, sendMessage, stopGeneration, regenerateResponse, retryLastMessage } = useChat();
   const [isVoiceModeOpen, setIsVoiceModeOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -106,7 +110,12 @@ function ChatContent() {
         onTouchMove={handleTouchMove}
         className="flex-1 min-h-0 overflow-y-auto scroll-smooth pb-4 px-2 md:px-0 no-scrollbar"
       >
-        {messages.length === 0 ? (
+        {chatId && isLoading && messages.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-gray-400 gap-2.5">
+            <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+            <span className="text-sm font-medium">Loading conversation...</span>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="h-full pt-10">
             <EmptyState onActionClick={handleSendMessage} />
           </div>
@@ -117,7 +126,7 @@ function ChatContent() {
                 <ChatBubble
                   key={message.id}
                   message={message}
-                  isStreaming={isLoading}
+                  isStreaming={isLoading && message.id === lastAssistantMessageId}
                   onRegenerate={
                     message.id === lastAssistantMessageId && message.content !== "" && !isLoading
                       ? () => handleRegenerate(message.id)
@@ -144,6 +153,7 @@ function ChatContent() {
         <ChatInput
           onSend={handleSendMessage}
           isLoading={isLoading}
+          isUploading={isUploading}
           onStop={stopGeneration}
           onOpenVoiceMode={() => setIsVoiceModeOpen(true)}
         />

@@ -72,6 +72,7 @@ export default function HistoryPage() {
       await chatService.deleteChat(targetChat.id);
       setChats((prev) => prev.filter((c) => c.id !== targetChat.id));
       setChatToDelete(null);
+      window.dispatchEvent(new Event("chats-updated"));
     } catch (err: any) {
       console.error("Failed to delete chat:", err);
       setDeleteError(err?.message || "Failed to delete chat.");
@@ -79,6 +80,20 @@ export default function HistoryPage() {
       setIsDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (!chatToDelete) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isDeleting) {
+        setChatToDelete(null);
+        setDeleteError(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [chatToDelete, isDeleting]);
 
   const handleRenameClick = (e: React.MouseEvent, chat: any) => {
     e.stopPropagation();
@@ -119,6 +134,7 @@ export default function HistoryPage() {
       );
       setEditingChatId(null);
       setEditingTitle("");
+      window.dispatchEvent(new Event("chats-updated"));
     } catch (err: any) {
       console.error("Failed to rename chat:", err);
       setRenameError(err?.message || "Failed to rename chat.");
@@ -304,8 +320,17 @@ export default function HistoryPage() {
         {/* Delete Modal */}
         <AnimatePresence>
           {chatToDelete && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <div
+              onClick={() => {
+                if (!isDeleting) {
+                  setChatToDelete(null);
+                  setDeleteError(null);
+                }
+              }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+            >
               <motion.div
+                onClick={(e) => e.stopPropagation()}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}

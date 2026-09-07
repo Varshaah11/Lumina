@@ -38,6 +38,7 @@ export function useChat() {
   const [chatId, setChatId] = useState<string | null>(initialChatId || null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadedChatIdRef = useRef<string | null>(null);
   const currentChatIdRef = useRef<string | null>(initialChatId || null);
@@ -95,8 +96,12 @@ export function useChat() {
         })
         .finally(() => setIsLoading(false));
     } else {
-      if (loadedChatIdRef.current === null && chatId === null) return;
-      if (isLoading && currentChatIdRef.current) return; // Protect active new chat stream from being wiped
+      if (loadedChatIdRef.current === null && chatId === null && currentChatIdRef.current === null) {
+        setMessages((prev) => (prev.length > 0 ? [] : prev));
+        lastFailedRequestRef.current = null;
+        return;
+      }
+      if (isLoading && currentChatIdRef.current && wasStreamingNewChatRef.current) return; // Protect active new chat stream from being wiped
       if (wasStreamingNewChatRef.current) {
         console.log("[useChat] Protecting active new chat stream completion on /chat page");
         wasStreamingNewChatRef.current = false;
@@ -115,8 +120,31 @@ export function useChat() {
       setIsLoading(false);
       loadedChatIdRef.current = null;
       currentChatIdRef.current = null;
+      lastFailedRequestRef.current = null;
+      wasStreamingNewChatRef.current = false;
     }
   }, [initialChatId, isLoading]);
+
+  useEffect(() => {
+    const handleNewChat = () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      setChatId(null);
+      setMessages([]);
+      setIsLoading(false);
+      loadedChatIdRef.current = null;
+      currentChatIdRef.current = null;
+      lastFailedRequestRef.current = null;
+      wasStreamingNewChatRef.current = false;
+    };
+
+    window.addEventListener("new-chat", handleNewChat);
+    return () => {
+      window.removeEventListener("new-chat", handleNewChat);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -144,6 +172,7 @@ export function useChat() {
 
     if (file) {
       setIsLoading(true);
+      setIsUploading(true);
       try {
         const uploadResult = await chatService.uploadFile(file);
         docContext = `[Attached Document: ${uploadResult.filename}]\nExtracted Content:\n"""\n${uploadResult.extracted_text}\n"""`;
@@ -167,6 +196,8 @@ export function useChat() {
         ]);
         setIsLoading(false);
         return;
+      } finally {
+        setIsUploading(false);
       }
     } else {
       if (lastFailedRequestRef.current) {
@@ -489,6 +520,7 @@ export function useChat() {
   return {
     messages,
     isLoading,
+    isUploading,
     sendMessage,
     stopGeneration,
     regenerateResponse,

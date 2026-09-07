@@ -85,8 +85,10 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     };
 
     window.addEventListener("chat-created", handleChatCreated);
+    window.addEventListener("chats-updated", loadChats);
     return () => {
       window.removeEventListener("chat-created", handleChatCreated);
+      window.removeEventListener("chats-updated", loadChats);
     };
   }, [pathname, searchParams]);
 
@@ -125,6 +127,20 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       setIsDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (!chatToDelete) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isDeleting) {
+        setChatToDelete(null);
+        setDeleteError(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [chatToDelete, isDeleting]);
 
   const handleRenameClick = (e: React.MouseEvent, chat: any) => {
     e.stopPropagation();
@@ -242,13 +258,13 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                 <Link
                   key={item.name}
                   href={item.href}
-                  onClick={() => {
+                  onClick={(e) => {
                     if (item.name === "New Chat") {
                       setSearchQuery("");
-                      if (pathname === "/chat") {
-                        window.history.pushState(null, "", "/chat");
-                        window.dispatchEvent(new PopStateEvent("popstate"));
-                      }
+                      setCurrentChatId(null);
+                      e.preventDefault();
+                      router.push("/chat");
+                      window.dispatchEvent(new Event("new-chat"));
                     }
                   }}
                   className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${
@@ -368,51 +384,55 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                     }
 
                     return (
-                      <div key={chat.id} className="relative group/item">
+                      <div
+                        key={chat.id}
+                        className={`relative group/item flex items-center justify-between rounded-xl transition-all ${
+                          isActive
+                            ? "bg-indigo-500/10 border border-indigo-500/20 text-indigo-300"
+                            : "text-gray-400 hover:bg-white/5 hover:text-white"
+                        }`}
+                      >
                         <Link
                           href={`/chat?chatId=${chat.id}`}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group ${
-                            isActive
-                              ? "bg-white/10 text-white"
-                              : "text-gray-400 hover:bg-white/5 hover:text-white"
-                          }`}
+                          title={chat.title}
+                          className="flex items-center gap-3 min-w-0 flex-1 px-3 py-2.5 rounded-xl outline-none focus-visible:ring-1 focus-visible:ring-indigo-500/50"
                         >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <MessageSquare className="w-4 h-4 shrink-0" />
-                            <AnimatePresence>
-                              {!isCollapsed && (
-                                <motion.span
-                                  initial={{ opacity: 0, width: 0 }}
-                                  animate={{ opacity: 1, width: "auto" }}
-                                  exit={{ opacity: 0, width: 0 }}
-                                  className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1"
-                                >
-                                  {chat.title}
-                                </motion.span>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                          {!isCollapsed && (
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 ml-1">
-                              <button
-                                type="button"
-                                onClick={(e) => handleRenameClick(e, chat)}
-                                className="p-1.5 text-gray-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition-all"
-                                title="Rename chat"
+                          <MessageSquare className="w-4 h-4 shrink-0" />
+                          <AnimatePresence>
+                            {!isCollapsed && (
+                              <motion.span
+                                initial={{ opacity: 0, width: 0 }}
+                                animate={{ opacity: 1, width: "auto" }}
+                                exit={{ opacity: 0, width: 0 }}
+                                className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1"
                               >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteClick(e, chat)}
-                                className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                                title="Delete chat"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
+                                {chat.title}
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
                         </Link>
+                        {!isCollapsed && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 transition-opacity shrink-0 pr-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => handleRenameClick(e, chat)}
+                              className="p-1.5 text-gray-400 hover:text-indigo-300 hover:bg-indigo-500/10 focus-visible:text-indigo-300 focus-visible:bg-indigo-500/20 focus-visible:ring-1 focus-visible:ring-indigo-500/50 rounded-lg transition-all cursor-pointer focus:outline-none"
+                              title="Rename chat"
+                              aria-label={`Rename chat ${chat.title}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteClick(e, chat)}
+                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 focus-visible:text-red-400 focus-visible:bg-red-500/20 focus-visible:ring-1 focus-visible:ring-red-500/50 rounded-lg transition-all cursor-pointer focus:outline-none"
+                              title="Delete chat"
+                              aria-label={`Delete chat ${chat.title}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -483,8 +503,17 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       {/* Confirmation Modal */}
       <AnimatePresence>
         {chatToDelete && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div
+            onClick={() => {
+              if (!isDeleting) {
+                setChatToDelete(null);
+                setDeleteError(null);
+              }
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
+          >
             <motion.div
+              onClick={(e) => e.stopPropagation()}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}

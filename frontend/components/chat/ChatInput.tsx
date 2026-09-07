@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Paperclip, Square, Mic, X, FileText, AudioLines } from "lucide-react";
+import { Send, Paperclip, Square, Mic, X, FileText, AudioLines, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
 
@@ -55,6 +55,7 @@ declare global {
 interface ChatInputProps {
   onSend: (message: string, file?: File | null) => void;
   isLoading: boolean;
+  isUploading?: boolean;
   onStop?: () => void;
   onOpenVoiceMode?: () => void;
 }
@@ -62,7 +63,7 @@ interface ChatInputProps {
 const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
-export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatInputProps) {
+export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOpenVoiceMode }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isListening, setIsListening] = useState(false);
@@ -135,6 +136,7 @@ export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatIn
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isLoading) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -308,16 +310,16 @@ export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatIn
       {/* Selected File Preview Badge */}
       {selectedFile && (
         <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 mb-2 shadow-sm animate-in fade-in slide-in-from-bottom-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
-            <span className="font-medium truncate max-w-[250px]">{selectedFile.name}</span>
-            <span className="text-gray-400 text-[10px]">
+            <span className="font-medium truncate flex-1 min-w-0">{selectedFile.name}</span>
+            <span className="text-gray-400 text-[10px] shrink-0">
               ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
             </span>
             <button
               type="button"
               onClick={handleRemoveFile}
-              className="ml-auto p-1 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+              className="ml-auto shrink-0 p-1 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
               title="Remove file"
             >
               <X className="w-3.5 h-3.5" />
@@ -328,41 +330,49 @@ export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatIn
             <span className="text-[11px] text-gray-400 font-medium mr-1">Quick Actions:</span>
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => {
+                if (isLoading) return;
                 onSend("Summarize this document in 5 key points.", selectedFile);
                 handleRemoveFile();
               }}
-              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               ✨ Summarize
             </button>
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => {
+                if (isLoading) return;
                 onSend("Create exam-ready study notes from this document.", selectedFile);
                 handleRemoveFile();
               }}
-              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               📝 Make Notes
             </button>
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => {
+                if (isLoading) return;
                 onSend("Explain the contents of this document like I am a beginner.", selectedFile);
                 handleRemoveFile();
               }}
-              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               💡 Explain
             </button>
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => {
+                if (isLoading) return;
                 onSend("Quiz me on this document with 5 questions. Ask one question at a time.", selectedFile);
                 handleRemoveFile();
               }}
-              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 text-indigo-200 text-[11px] font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               🎯 Quiz Me
             </button>
@@ -370,17 +380,28 @@ export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatIn
         </div>
       )}
 
-      {/* Subtle indicator for Listening or Notices */}
-      {isListening ? (
-        <div className="absolute -top-7 left-4 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs animate-pulse">
+      {/* Listening indicator */}
+      {isListening && (
+        <div className="mb-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs animate-pulse w-fit">
           <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
           <span>Listening...</span>
         </div>
-      ) : noticeMessage ? (
-        <div className="absolute -top-7 left-4 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+      )}
+
+      {/* Validation notice in normal document flow */}
+      {noticeMessage && (
+        <div className="mb-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs w-fit">
           <span>{noticeMessage}</span>
         </div>
-      ) : null}
+      )}
+
+      {/* Uploading & parsing feedback */}
+      {isUploading && (
+        <div className="mb-2 flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs w-fit animate-pulse">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+          <span>Uploading & parsing...</span>
+        </div>
+      )}
 
       <form 
         onSubmit={handleSubmit}
@@ -390,9 +411,13 @@ export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatIn
           type="button" 
           variant="ghost" 
           size="icon" 
-          onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 h-10 w-10 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl mb-0.5"
-          title="Attach document (PDF, DOCX, TXT, MD)"
+          disabled={isLoading}
+          onClick={() => {
+            if (isLoading) return;
+            fileInputRef.current?.click();
+          }}
+          className="shrink-0 h-10 w-10 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl mb-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          title={isLoading ? "Cannot attach files while generating" : "Attach document (PDF, DOCX, TXT, MD)"}
         >
           <Paperclip className="w-5 h-5" />
         </Button>
@@ -413,7 +438,7 @@ export function ChatInput({ onSend, isLoading, onStop, onOpenVoiceMode }: ChatIn
             variant="ghost"
             size="icon"
             onClick={onOpenVoiceMode}
-            className="shrink-0 h-10 w-10 rounded-xl mb-0.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20 shadow-sm"
+            className="hidden sm:flex shrink-0 h-10 w-10 rounded-xl mb-0.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20 shadow-sm"
             title="Launch Voice Assistant Mode"
           >
             <AudioLines className="w-5 h-5" />
