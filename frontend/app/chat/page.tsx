@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, Suspense } from "react";
+import { useRef, useEffect, useState, useMemo, Suspense } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -18,6 +18,15 @@ function ChatContent() {
   const touchStartYRef = useRef<number | null>(null);
 
   const hasDocument = messages.some((m) => m.content.includes("📄 ") || m.content.includes("[Attached Document:"));
+
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant") {
+        return messages[i].id;
+      }
+    }
+    return null;
+  }, [messages]);
 
   const handleScroll = () => {
     const container = scrollContainerRef.current;
@@ -101,7 +110,7 @@ function ChatContent() {
                   message={message}
                   isStreaming={isLoading}
                   onRegenerate={
-                    message.role === "assistant" && message.content !== "" && !isLoading
+                    message.id === lastAssistantMessageId && message.content !== "" && !isLoading
                       ? () => handleRegenerate(message.id)
                       : undefined
                   }
