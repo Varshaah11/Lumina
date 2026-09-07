@@ -185,10 +185,12 @@ function renderUserMessage(content: string) {
 export function ChatBubble({
   message,
   onRegenerate,
+  onRetry,
   isStreaming,
 }: {
   message: Message;
   onRegenerate?: () => void;
+  onRetry?: () => void;
   isStreaming?: boolean;
 }) {
   const isUser = message.role === "user";
@@ -711,6 +713,34 @@ export function ChatBubble({
                 <RotateCcw className="w-4 h-4" />
               </Button>
             )}
+          </div>
+        )}
+
+        {/* Error Message Actions */}
+        {isError && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            {onRetry && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2.5 rounded-lg text-xs font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                onClick={onRetry}
+                title="Retry failed request"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Retry</span>
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg"
+              onClick={() => copyToClipboard(message.content)}
+              title="Copy error message"
+            >
+              {copiedId === "msg" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </Button>
           </div>
         )}
       </div>

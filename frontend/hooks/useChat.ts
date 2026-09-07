@@ -19,6 +19,16 @@ export interface ChatSession {
   updatedAt: Date;
 }
 
+interface FailedRequest {
+  type: "send" | "regenerate";
+  content?: string;
+  file?: File | null;
+  docContext?: string | null;
+  userVisibleContent?: string;
+  isVoice?: boolean;
+  messageId?: string;
+}
+
 export function useChat() {
 
   const router = useRouter();
@@ -32,6 +42,7 @@ export function useChat() {
   const loadedChatIdRef = useRef<string | null>(null);
   const currentChatIdRef = useRef<string | null>(initialChatId || null);
   const wasStreamingNewChatRef = useRef<boolean>(false);
+  const lastFailedRequestRef = useRef<FailedRequest | null>(null);
 
   // Sync ref with current chatId state
   useEffect(() => {
@@ -123,6 +134,14 @@ export function useChat() {
     let docContext: string | null = null;
     let userVisibleContent = userPromptText;
 
+    // Track request details for retry support
+    lastFailedRequestRef.current = {
+      type: "send",
+      content: userPromptText,
+      file: file || null,
+      isVoice,
+    };
+
     if (file) {
       setIsLoading(true);
       try {
@@ -130,6 +149,11 @@ export function useChat() {
         docContext = `[Attached Document: ${uploadResult.filename}]\nExtracted Content:\n"""\n${uploadResult.extracted_text}\n"""`;
         const promptPart = userPromptText || "Please analyze and summarize the contents of this document.";
         userVisibleContent = `📄 ${uploadResult.filename}\n\n${promptPart}`;
+
+        if (lastFailedRequestRef.current) {
+          lastFailedRequestRef.current.docContext = docContext;
+          lastFailedRequestRef.current.userVisibleContent = userVisibleContent;
+        }
       } catch (err: any) {
         console.warn("[useChat] File upload failed:", err);
         setMessages((prev) => [
@@ -143,6 +167,10 @@ export function useChat() {
         ]);
         setIsLoading(false);
         return;
+      }
+    } else {
+      if (lastFailedRequestRef.current) {
+        lastFailedRequestRef.current.userVisibleContent = userVisibleContent;
       }
     }
 
@@ -238,6 +266,7 @@ export function useChat() {
       () => {
         console.log("[useChat] onComplete() streaming finished successfully");
         setIsLoading(false);
+        lastFailedRequestRef.current = null;
         abortControllerRef.current = null;
         if (currentChatIdRef.current && !initialChatId) {
           window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
@@ -254,6 +283,7 @@ export function useChat() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsLoading(false);
+      lastFailedRequestRef.current = null;
     }
   };
 
@@ -269,6 +299,11 @@ export function useChat() {
 
     const oldContent = targetMsg.content;
     const botMsgId = messageId;
+
+    lastFailedRequestRef.current = {
+      type: "regenerate",
+      messageId,
+    };
 
     setMessages((prev) =>
       prev.map((msg) =>
@@ -322,9 +357,131 @@ export function useChat() {
       () => {
         console.log("[useChat] regenerate onComplete()");
         setIsLoading(false);
+        lastFailedRequestRef.current = null;
         abortControllerRef.current = null;
       }
     );
+  };
+
+  const retryLastMessage = async () => {
+    if (isLoading) return;
+
+    let lastErrorIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "error") {
+        lastErrorIndex = i;
+        break;
+      }
+    }
+    if (lastErrorIndex === -1) return;
+
+    const errorMsgId = messages[lastErrorIndex].id;
+    const failedReq = lastFailedRequestRef.current;
+
+    // Remove the error message from state
+    setMessages((prev) => prev.filter((m) => m.id !== errorMsgId));
+
+    if (failedReq?.type === "regenerate" && failedReq.messageId) {
+      regenerateResponse(failedReq.messageId);
+      return;
+    }
+
+    if (failedReq?.type === "send") {
+      const { content = "", file, docContext, userVisibleContent, isVoice } = failedReq;
+
+      // If a file was attached, but failed before upload/extraction completed, re-run full send
+      if (file && !docContext) {
+        sendMessage(content, file, isVoice);
+        return;
+      }
+
+      const effectiveContent = userVisibleContent || content;
+      const precedingUserMsg = messages
+        .slice(0, lastErrorIndex)
+        .reverse()
+        .find((m) => m.role === "user");
+
+      if (precedingUserMsg) {
+        // userMsg is already in chat list; create bot placeholder and re-stream
+        const botMsgId = crypto.randomUUID();
+        const botMsg: Message = {
+          id: botMsgId,
+          role: "assistant",
+          content: "",
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev.filter((m) => m.id !== errorMsgId), botMsg]);
+        setIsLoading(true);
+
+        const activeChatId = currentChatIdRef.current;
+        if (!activeChatId) {
+          wasStreamingNewChatRef.current = true;
+        }
+
+        abortControllerRef.current = chatService.streamMessage(
+          effectiveContent,
+          activeChatId,
+          (textChunk) => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMsgId
+                  ? { ...msg, content: msg.content + textChunk }
+                  : msg
+              )
+            );
+          },
+          (newChatId) => {
+            if (!activeChatId) {
+              setChatId(newChatId);
+              loadedChatIdRef.current = newChatId;
+              currentChatIdRef.current = newChatId;
+            }
+          },
+          (errorMsg) => {
+            setMessages((prev) => {
+              const newMessages = prev.filter((msg) => !(msg.id === botMsgId && msg.content === ""));
+              return [
+                ...newMessages,
+                {
+                  id: crypto.randomUUID(),
+                  role: "error",
+                  content: errorMsg,
+                  timestamp: new Date(),
+                },
+              ];
+            });
+            setIsLoading(false);
+            abortControllerRef.current = null;
+          },
+          () => {
+            setIsLoading(false);
+            lastFailedRequestRef.current = null;
+            abortControllerRef.current = null;
+            if (currentChatIdRef.current && !initialChatId) {
+              window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
+              window.dispatchEvent(new Event("chat-created"));
+            }
+          },
+          docContext,
+          isVoice
+        );
+        return;
+      }
+
+      sendMessage(content, file, isVoice);
+      return;
+    }
+
+    // Fallback if failedReq was cleared: find preceding user prompt
+    const precedingUserMsg = messages
+      .slice(0, lastErrorIndex)
+      .reverse()
+      .find((m) => m.role === "user");
+
+    if (precedingUserMsg) {
+      sendMessage(precedingUserMsg.content);
+    }
   };
 
   const clearChat = () => setMessages([]);
@@ -335,6 +492,7 @@ export function useChat() {
     sendMessage,
     stopGeneration,
     regenerateResponse,
+    retryLastMessage,
     clearChat,
   };
 }

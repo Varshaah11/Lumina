@@ -10,7 +10,7 @@ import { useChat } from "@/hooks/useChat";
 import { motion, AnimatePresence } from "framer-motion";
 
 function ChatContent() {
-  const { messages, isLoading, sendMessage, stopGeneration, regenerateResponse } = useChat();
+  const { messages, isLoading, sendMessage, stopGeneration, regenerateResponse, retryLastMessage } = useChat();
   const [isVoiceModeOpen, setIsVoiceModeOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -22,6 +22,15 @@ function ChatContent() {
   const lastAssistantMessageId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "assistant") {
+        return messages[i].id;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const lastErrorMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "error") {
         return messages[i].id;
       }
     }
@@ -112,6 +121,14 @@ function ChatContent() {
                   onRegenerate={
                     message.id === lastAssistantMessageId && message.content !== "" && !isLoading
                       ? () => handleRegenerate(message.id)
+                      : undefined
+                  }
+                  onRetry={
+                    message.id === lastErrorMessageId && !isLoading
+                      ? () => {
+                          isUserScrollingRef.current = false;
+                          retryLastMessage();
+                        }
                       : undefined
                   }
                 />
