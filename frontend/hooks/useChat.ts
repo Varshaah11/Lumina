@@ -39,6 +39,7 @@ export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const isUploadingRef = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadedChatIdRef = useRef<string | null>(null);
   const currentChatIdRef = useRef<string | null>(initialChatId || null);
@@ -53,8 +54,19 @@ export function useChat() {
   useEffect(() => {
     console.log("[useChat] useEffect(initialChatId) triggered", { initialChatId, loadedChatId: loadedChatIdRef.current, isLoading });
     if (isLoading) {
-      console.log("[useChat] Skipping useEffect(initialChatId) because stream is currently active (isLoading = true)");
-      return;
+      if (isUploadingRef.current && initialChatId !== loadedChatIdRef.current) {
+        console.log("[useChat] Upload active and chat switched: aborting upload");
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+        isUploadingRef.current = false;
+        setIsUploading(false);
+        setIsLoading(false);
+      } else {
+        console.log("[useChat] Skipping useEffect(initialChatId) because stream is currently active (isLoading = true)");
+        return;
+      }
     }
 
     if (initialChatId) {
@@ -131,6 +143,8 @@ export function useChat() {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
+      isUploadingRef.current = false;
+      setIsUploading(false);
       setChatId(null);
       setMessages([]);
       setIsLoading(false);
@@ -173,8 +187,30 @@ export function useChat() {
     if (file) {
       setIsLoading(true);
       setIsUploading(true);
+      isUploadingRef.current = true;
+
+      const uploadController = new AbortController();
+      abortControllerRef.current = uploadController;
+      const targetChatId = currentChatIdRef.current;
+
       try {
-        const uploadResult = await chatService.uploadFile(file);
+        const uploadResult = await chatService.uploadFile(file, uploadController.signal);
+
+        // Discard result if upload was aborted or if user switched chats / started new chat during upload
+        if (
+          uploadController.signal.aborted ||
+          currentChatIdRef.current !== targetChatId
+        ) {
+          console.log("[useChat] Upload finished but chat switched or was aborted. Discarding result.");
+          if (abortControllerRef.current === uploadController) {
+            abortControllerRef.current = null;
+          }
+          setIsLoading(false);
+          setIsUploading(false);
+          isUploadingRef.current = false;
+          return;
+        }
+
         docContext = `[Attached Document: ${uploadResult.filename}]\nExtracted Content:\n"""\n${uploadResult.extracted_text}\n"""`;
         const promptPart = userPromptText || "Please analyze and summarize the contents of this document.";
         userVisibleContent = `📄 ${uploadResult.filename}\n\n${promptPart}`;
@@ -184,6 +220,22 @@ export function useChat() {
           lastFailedRequestRef.current.userVisibleContent = userVisibleContent;
         }
       } catch (err: any) {
+        // Handle AbortError or discarded chat switch silently without creating an error bubble
+        if (
+          err?.name === "AbortError" ||
+          uploadController.signal.aborted ||
+          currentChatIdRef.current !== targetChatId
+        ) {
+          console.log("[useChat] File upload aborted or discarded after chat switch.");
+          if (abortControllerRef.current === uploadController) {
+            abortControllerRef.current = null;
+          }
+          setIsLoading(false);
+          setIsUploading(false);
+          isUploadingRef.current = false;
+          return;
+        }
+
         console.warn("[useChat] File upload failed:", err);
         setMessages((prev) => [
           ...prev,
@@ -195,9 +247,13 @@ export function useChat() {
           },
         ]);
         setIsLoading(false);
+        if (abortControllerRef.current === uploadController) {
+          abortControllerRef.current = null;
+        }
         return;
       } finally {
         setIsUploading(false);
+        isUploadingRef.current = false;
       }
     } else {
       if (lastFailedRequestRef.current) {
@@ -314,6 +370,8 @@ export function useChat() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
       setIsLoading(false);
+      setIsUploading(false);
+      isUploadingRef.current = false;
       lastFailedRequestRef.current = null;
     }
   };

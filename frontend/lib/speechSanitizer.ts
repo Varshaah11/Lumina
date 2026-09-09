@@ -30,12 +30,21 @@ export function sanitizeTextForTTS(rawText: string): string {
     text = text.slice(0, unclosedIdx);
   }
 
+  // Helper: convert factorial notation in math expressions without affecting natural punctuation
+  const convertMathFactorials = (mathStr: string): string => {
+    // Parenthesized expressions e.g. (n - 1)! -> (n - 1) factorial
+    let res = mathStr.replace(/\(([^)]+)\)!/g, "($1) factorial");
+    // Numbers or single-letter math variables followed by ! e.g. 5! -> 5 factorial, n! -> n factorial
+    res = res.replace(/\b(\d+|[a-zA-Z])!/g, "$1 factorial");
+    return res;
+  };
+
   // 3. LaTeX / Math Expressions:
-  // Strip delimiters first: $$...$$, \[...\], \(...\)
-  text = text.replace(/\$\$([\s\S]*?)\$\$/g, " $1 ");
-  text = text.replace(/\\\[([\s\S]*?)\\\]/g, " $1 ");
-  text = text.replace(/\\\(([\s\S]*?)\\\)/g, " $1 ");
-  text = text.replace(/\$([^$\n]+)\$/g, " $1 ");
+  // Convert factorials inside explicit math blocks before stripping delimiters
+  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => ` ${convertMathFactorials(math)} `);
+  text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => ` ${convertMathFactorials(math)} `);
+  text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => ` ${convertMathFactorials(math)} `);
+  text = text.replace(/\$([^$\n]+)\$/g, (_, math) => ` ${convertMathFactorials(math)} `);
 
   // Convert basic math symbols and expressions to spoken words
   text = text.replace(/\\times\b/g, " times ");
@@ -51,7 +60,12 @@ export function sanitizeTextForTTS(rawText: string): string {
   text = text.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, " $1 over $2 ");
   text = text.replace(/\\left\(/g, " (");
   text = text.replace(/\\right\)/g, ") ");
-  text = text.replace(/([a-zA-Z0-9]+)!/g, "$1 factorial");
+
+  // Convert non-delimited mathematical factorials (e.g. (n - 1)!, 5! = 120, or n! * ...)
+  text = text.replace(/\(([a-zA-Z0-9\s+\-*/]+)\)!/g, "($1) factorial");
+  text = text.replace(/\b(\d+|[a-zA-Z])!\s*([=><+\-*/]|\btimes\b|\bdivided\b)/g, "$1 factorial $2");
+  text = text.replace(/([=><+\-*/]|\btimes\b|\bdivided\b)\s*\b(\d+|[a-zA-Z])!/g, "$1 $2 factorial");
+  text = text.replace(/\b(?:calculate|compute|find|value\s+of)\s+(\d+)!/gi, "$1 factorial");
 
   // Strip LaTeX commands like \text{...}, \mathbf{...}, \mathit{...}
   text = text.replace(/\\(?:text|mathbf|mathit|mathrm|mathcal)\{([^}]+)\}/g, " $1 ");

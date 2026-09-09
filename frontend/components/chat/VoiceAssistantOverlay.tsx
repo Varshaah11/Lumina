@@ -32,7 +32,7 @@ export function VoiceAssistantOverlay({
   isLoading,
   messages,
   hasDocument = false,
-  enableWakeWord = true,
+  enableWakeWord = false,
   onOpenVoiceMode,
 }: VoiceAssistantOverlayProps) {
   const {

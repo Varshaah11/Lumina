@@ -74,7 +74,6 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const initialInputRef = useRef<string>("");
   const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-trigger file upload or prompt population if query params present
@@ -135,6 +134,17 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
     };
   }, []);
 
+  // Clear selected file when the user starts a new chat
+  useEffect(() => {
+    const handleNewChat = () => {
+      handleRemoveFile();
+    };
+    window.addEventListener("new-chat", handleNewChat);
+    return () => {
+      window.removeEventListener("new-chat", handleNewChat);
+    };
+  }, []);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isLoading) return;
     const file = e.target.files?.[0];
@@ -174,10 +184,16 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       recognitionRef.current = null;
     }
     setIsListening(false);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("lumina:speech-released"));
+    }
   }, []);
 
   const startListening = useCallback(() => {
     if (typeof window === "undefined") return;
+
+    // Signal any background listeners (e.g. Dashboard wake-word) to release the microphone
+    window.dispatchEvent(new Event("lumina:stop-speech"));
 
     const SpeechRecognitionClass =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -195,6 +211,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       } catch {
         // ignore
       }
+      recognitionRef.current = null;
     }
 
     try {
@@ -202,10 +219,6 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = navigator.language || "en-US";
-
-      // Save initial text present before voice input started
-      initialInputRef.current = input;
-
       recognition.onstart = () => {
         setIsListening(true);
         setNoticeMessage(null);
@@ -224,15 +237,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
           }
         }
 
-        const base = initialInputRef.current;
-        let combined = base;
-
-        if (currentFinal) {
-          const needsSpace =
-            base.length > 0 && !base.endsWith(" ") && !currentFinal.startsWith(" ");
-          combined += (needsSpace ? " " : "") + currentFinal;
-        }
-
+        let combined = currentFinal;
         if (currentInterim) {
           const needsSpace =
             combined.length > 0 && !combined.endsWith(" ") && !currentInterim.startsWith(" ");
@@ -245,15 +250,24 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           showNotice("Microphone permission denied.");
-        } else if (event.error !== "no-speech" && event.error !== "aborted") {
+          stopListening();
+        } else if (event.error === "no-speech") {
+          // Non-fatal silence pause in continuous mode
+          return;
+        } else if (event.error !== "aborted") {
           showNotice("Voice recognition error.");
+          stopListening();
+        } else {
+          stopListening();
         }
-        stopListening();
       };
 
       recognition.onend = () => {
         setIsListening(false);
         recognitionRef.current = null;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("lumina:speech-released"));
+        }
       };
 
       recognitionRef.current = recognition;
@@ -262,7 +276,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       showNotice("Failed to start voice input.");
       stopListening();
     }
-  }, [input, showNotice, stopListening]);
+  }, [showNotice, stopListening]);
 
   const toggleListening = () => {
     if (isListening) {
@@ -304,6 +318,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
         ref={fileInputRef}
         accept=".pdf,.docx,.txt,.md"
         onChange={handleFileChange}
+        aria-label="Attach document"
         className="hidden"
       />
 
@@ -418,6 +433,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
           }}
           className="shrink-0 h-10 w-10 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl mb-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
           title={isLoading ? "Cannot attach files while generating" : "Attach document (PDF, DOCX, TXT, MD)"}
+          aria-label="Attach document"
         >
           <Paperclip className="w-5 h-5" />
         </Button>
@@ -427,8 +443,9 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          disabled={isLoading}
           placeholder={selectedFile ? "Add a message about this file (optional)..." : "Ask Lumina anything..."}
-          className="flex-1 max-h-[200px] min-h-[44px] bg-transparent border-0 resize-none py-3 px-2 text-white placeholder:text-gray-500 focus:ring-0 focus:outline-none"
+          className="flex-1 max-h-[200px] min-h-[44px] bg-transparent border-0 resize-none py-3 px-2 text-white placeholder:text-gray-500 focus:ring-0 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
           rows={1}
         />
 
@@ -437,9 +454,15 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
             type="button"
             variant="ghost"
             size="icon"
-            onClick={onOpenVoiceMode}
+            onClick={() => {
+              if (isListening) {
+                stopListening();
+              }
+              onOpenVoiceMode();
+            }}
             className="hidden sm:flex shrink-0 h-10 w-10 rounded-xl mb-0.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20 shadow-sm"
             title="Launch Voice Assistant Mode"
+            aria-label="Launch Voice Assistant Mode"
           >
             <AudioLines className="w-5 h-5" />
           </Button>
@@ -449,20 +472,28 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
           type="button"
           variant="ghost"
           size="icon"
+          disabled={isLoading}
           onClick={toggleListening}
           className={`shrink-0 h-10 w-10 rounded-xl mb-0.5 transition-all ${
-            isListening
+            isLoading
+              ? "text-gray-600 opacity-50 cursor-not-allowed"
+              : isListening
               ? "bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 shadow-lg shadow-red-500/10"
               : isSupported
               ? "text-gray-400 hover:text-white hover:bg-white/5"
               : "text-gray-600 cursor-not-allowed opacity-50"
           }`}
           title={
-            isListening
+            isLoading
+              ? "Voice input unavailable while generating"
+              : isListening
               ? "Stop listening"
               : isSupported
               ? "Start voice input"
               : "Voice input isn't supported in this browser"
+          }
+          aria-label={
+            isListening ? "Stop listening" : "Start voice input"
           }
         >
           <Mic className={`w-5 h-5 ${isListening ? "animate-pulse text-red-400" : ""}`} />
@@ -474,6 +505,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
             onClick={onStop}
             className="shrink-0 h-10 w-10 rounded-xl mb-0.5 flex items-center justify-center transition-all bg-red-500/20 text-red-400 hover:bg-red-500/30 shadow-lg"
             title="Stop generation"
+            aria-label="Stop generation"
           >
             <Square className="w-4 h-4 fill-current" />
           </Button>
@@ -486,6 +518,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
                 ? "bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg" 
                 : "bg-white/5 text-gray-500"
             }`}
+            aria-label="Send message"
           >
             <Send className="w-4 h-4" />
           </Button>

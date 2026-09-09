@@ -147,6 +147,16 @@ export function useVoiceConversation({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
+  // Stable callback prop refs
+  const onOpenVoiceModeRef = useRef(onOpenVoiceMode);
+  onOpenVoiceModeRef.current = onOpenVoiceMode;
+
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+
+  const stopGenerationRef = useRef(stopGeneration);
+  stopGenerationRef.current = stopGeneration;
+
   // Recognition & Session refs
   const recognitionRef = useRef<any>(null);
   const activeSessionIdRef = useRef<number>(0);
@@ -154,6 +164,12 @@ export function useVoiceConversation({
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const actionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastWakeTriggerTimeRef = useRef<number>(0);
+
+  // Per-turn speech transcript isolation refs
+  const turnStartResultIndexRef = useRef<number>(0);
+  const lastResultsLengthRef = useRef<number>(0);
+  const latestTranscriptRef = useRef<string>("");
+  const startListeningRef = useRef<() => void>(() => {});
 
   // State Invariant & Lifecycle tracking refs
   const isListeningRef = useRef<boolean>(false);
@@ -287,18 +303,21 @@ export function useVoiceConversation({
   const handleStop = useCallback(() => {
     console.log("[handleStop] User triggered full stop");
     activeTurnIdRef.current++;
+    turnStartResultIndexRef.current = 0;
+    lastResultsLengthRef.current = 0;
+    latestTranscriptRef.current = "";
     stopSTT();
     interruptPlayback();
-    stopGeneration();
+    stopGenerationRef.current();
     isSubmittingRef.current = false;
     setTranscript("");
     setActionFeedback(null);
     setVoiceState("IDLE");
-  }, [stopSTT, interruptPlayback, stopGeneration]);
+  }, [stopSTT, interruptPlayback]);
 
   // Immediate Interruption Handler (for "stop", "Lumina stop", "stop Lumina")
   const handleImmediateInterruption = useCallback(
-    (triggerPhrase: string) => {
+    (triggerPhrase: string): void => {
       console.log(`[INTERRUPTION] "${triggerPhrase}" detected -> IMMEDIATELY halting playback and LLM stream`);
       // Invalidate active turn so in-flight TTS responses are discarded
       activeTurnIdRef.current++;
@@ -307,24 +326,47 @@ export function useVoiceConversation({
       cleanupAudioResources();
 
       // Abort LLM stream
-      stopGeneration();
+      stopGenerationRef.current();
 
       isSubmittingRef.current = false;
       setTranscript("");
+      latestTranscriptRef.current = "";
+      turnStartResultIndexRef.current = 0;
+      lastResultsLengthRef.current = 0;
       setActionFeedback(null);
 
-      // Transition voice state back to LISTENING immediately
+      // Clean restart into fresh LISTENING session
+      stopSTT();
       setVoiceState("LISTENING");
+      voiceStateRef.current = "LISTENING";
+      setTimeout(() => {
+        if (isVoiceActiveRef.current) {
+          startListeningRef.current();
+        }
+      }, 100);
     },
-    [cleanupAudioResources, stopGeneration]
+    [cleanupAudioResources, stopSTT]
   );
 
   // Start STT Microphone Listener (Unified Single-Instance Implementation)
-  const startListening = useCallback(() => {
+  const startListening = useCallback((): void => {
     if (typeof window === "undefined") return;
 
     if (isListeningRef.current && recognitionRef.current) {
-      console.log("[startListening] Recognition is already active and running.");
+      if (isVoiceActiveRef.current && voiceStateRef.current === "LISTENING") {
+        console.log("[startListening] Recognition is already active and in LISTENING state.");
+        return;
+      }
+      console.log("[startListening] Transitioning active recognition into LISTENING state");
+      stopSTT();
+      if (isVoiceActiveRef.current) {
+        setVoiceState("LISTENING");
+        voiceStateRef.current = "LISTENING";
+        setTranscript("");
+      }
+      setTimeout(() => {
+        startListening();
+      }, 100);
       return;
     }
 
@@ -343,12 +385,13 @@ export function useVoiceConversation({
       stopSTT();
 
       const sessionId = ++activeSessionIdRef.current;
+      turnStartResultIndexRef.current = 0;
+      lastResultsLengthRef.current = 0;
+      latestTranscriptRef.current = "";
       const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = navigator.language || "en-US";
-
-      let latestTranscript = "";
 
       recognition.onstart = () => {
         if (activeSessionIdRef.current !== sessionId) return;
@@ -357,6 +400,7 @@ export function useVoiceConversation({
         if (isVoiceActiveRef.current) {
           if (!isPlayingAudioRef.current && voiceStateRef.current !== "THINKING" && voiceStateRef.current !== "SPEAKING") {
             setVoiceState("LISTENING");
+            voiceStateRef.current = "LISTENING";
           }
         }
       };
@@ -364,10 +408,14 @@ export function useVoiceConversation({
       recognition.onresult = (event: any) => {
         if (activeSessionIdRef.current !== sessionId) return;
 
+        lastResultsLengthRef.current = event.results.length;
+
         let currentFinal = "";
         let currentInterim = "";
 
-        for (let i = 0; i < event.results.length; i++) {
+        // Only process results from the current conversational turn
+        const startIdx = Math.min(turnStartResultIndexRef.current, event.results.length);
+        for (let i = startIdx; i < event.results.length; i++) {
           const res = event.results[i];
           if (res.isFinal) {
             currentFinal += res[0].transcript;
@@ -377,7 +425,7 @@ export function useVoiceConversation({
         }
 
         const fullText = (currentFinal + " " + currentInterim).trim();
-        latestTranscript = fullText;
+        latestTranscriptRef.current = fullText;
 
         // SCENARIO 1: Dashboard Idle Wake-Word Mode (isOpen is false)
         if (!isVoiceActiveRef.current) {
@@ -391,7 +439,7 @@ export function useVoiceConversation({
               lastWakeTriggerTimeRef.current = now;
               console.log(`[WAKE WORD DETECTED] "Lumina" heard! Trailing prompt="${prompt}"`);
 
-              onOpenVoiceMode?.();
+              onOpenVoiceModeRef.current?.();
 
               if (prompt.length >= 2) {
                 console.log(`[WAKE WORD] Immediate question found: "${prompt}" -> auto-submitting`);
@@ -401,6 +449,7 @@ export function useVoiceConversation({
               } else {
                 console.log(`[WAKE WORD] Wake word only -> ready for user question`);
                 setVoiceState("LISTENING");
+                voiceStateRef.current = "LISTENING";
               }
             }
           }
@@ -432,8 +481,8 @@ export function useVoiceConversation({
                   voiceStateRef.current === "LISTENING" &&
                   !isSubmittingRef.current
                 ) {
-                  console.log("[STT] silence detected, auto-submitting transcript:", latestTranscript);
-                  submitTranscript(latestTranscript);
+                  console.log("[STT] silence detected, auto-submitting transcript:", latestTranscriptRef.current);
+                  submitTranscript(latestTranscriptRef.current);
                 }
               }, 1500);
             }
@@ -444,6 +493,10 @@ export function useVoiceConversation({
       recognition.onerror = (event: any) => {
         if (activeSessionIdRef.current !== sessionId) return;
         console.log(`[STT] recognition.onerror (${event.error})`);
+        if (event.error === "no-speech") {
+          // Benign silence in continuous mode — do not abort listening
+          return;
+        }
         isListeningRef.current = false;
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           setErrorMessage("Microphone permission denied.");
@@ -451,7 +504,7 @@ export function useVoiceConversation({
             setVoiceState("ERROR");
           }
           stopSTT();
-        } else if (event.error !== "no-speech" && event.error !== "aborted") {
+        } else if (event.error !== "aborted") {
           if (isVoiceActiveRef.current) {
             setErrorMessage(`Voice recognition error (${event.error})`);
           }
@@ -470,8 +523,8 @@ export function useVoiceConversation({
         // Auto-restart recognition based on active state
         if (isVoiceActiveRef.current) {
           if (voiceStateRef.current === "LISTENING") {
-            if (latestTranscript.trim().length >= 2 && !isSubmittingRef.current) {
-              submitTranscript(latestTranscript);
+            if (latestTranscriptRef.current.trim().length >= 2 && !isSubmittingRef.current) {
+              submitTranscript(latestTranscriptRef.current);
             } else if (!isSubmittingRef.current && isLoopEnabled) {
               setTimeout(() => {
                 if (
@@ -481,7 +534,7 @@ export function useVoiceConversation({
                 ) {
                   startListening();
                 }
-              }, 300);
+              }, 200);
             } else {
               setVoiceState("IDLE");
             }
@@ -495,15 +548,15 @@ export function useVoiceConversation({
               ) {
                 startListening();
               }
-            }, 300);
+            }, 200);
           }
         } else if (enableWakeWord) {
           // Keep listening for wake word on Dashboard
           setTimeout(() => {
-            if (activeSessionIdRef.current === sessionId && !isVoiceActiveRef.current) {
+            if (activeSessionIdRef.current === sessionId && !isVoiceActiveRef.current && enableWakeWord) {
               startListening();
             }
-          }, 500);
+          }, 300);
         }
       };
 
@@ -518,7 +571,8 @@ export function useVoiceConversation({
         setVoiceState("ERROR");
       }
     }
-  }, [stopSTT, isLoopEnabled, enableWakeWord, onOpenVoiceMode, handleImmediateInterruption]);
+  }, [stopSTT, isLoopEnabled, enableWakeWord, handleImmediateInterruption]);
+  startListeningRef.current = startListening;
 
   // Immediate Voice Mode Exit Handler (Immediate, race-free termination)
   const exitVoiceMode = useCallback(() => {
@@ -544,7 +598,7 @@ export function useVoiceConversation({
     }
 
     // 5. Abort active LLM generation stream
-    stopGeneration();
+    stopGenerationRef.current();
 
     // 6. Clear any pending silence or action timers
     if (silenceTimerRef.current) {
@@ -559,6 +613,9 @@ export function useVoiceConversation({
     // 7. Reset submission state, transcript, and UI feedback
     isSubmittingRef.current = false;
     setTranscript("");
+    latestTranscriptRef.current = "";
+    turnStartResultIndexRef.current = 0;
+    lastResultsLengthRef.current = 0;
     setActionFeedback(null);
     setVoiceState("IDLE");
 
@@ -572,7 +629,7 @@ export function useVoiceConversation({
         }
       }, 200);
     }
-  }, [stopSTT, cleanupAudioResources, stopGeneration, enableWakeWord, startListening]);
+  }, [stopSTT, cleanupAudioResources, enableWakeWord, startListening]);
 
   // Audio Queue Consumer: Plays audio chunks in strict sequential order (0 -> 1 -> 2 -> ...)
   const playNextAudioInQueue = useCallback((turnId: number) => {
@@ -693,8 +750,19 @@ export function useVoiceConversation({
         isSubmittingRef.current = false;
 
         if (isVoiceActiveRef.current && isLoopEnabled) {
+          console.log("[VOICE STREAM] All audio chunks completed naturally -> restarting clean listening turn");
           setVoiceState("LISTENING");
-          startListening();
+          voiceStateRef.current = "LISTENING";
+          setTranscript("");
+          latestTranscriptRef.current = "";
+          turnStartResultIndexRef.current = 0;
+          lastResultsLengthRef.current = 0;
+          stopSTT();
+          setTimeout(() => {
+            if (isVoiceActiveRef.current) {
+              startListening();
+            }
+          }, 100);
         } else {
           setVoiceState("IDLE");
         }
@@ -837,6 +905,8 @@ export function useVoiceConversation({
       console.log("[STT] submitting transcript:", clean);
       isSubmittingRef.current = true;
       setTranscript("");
+      latestTranscriptRef.current = "";
+      turnStartResultIndexRef.current = lastResultsLengthRef.current;
 
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
@@ -902,7 +972,7 @@ export function useVoiceConversation({
       const promptToSend = intentResult.formattedPrompt || clean;
 
       try {
-        await sendMessage(promptToSend, null, true);
+        await sendMessageRef.current(promptToSend, null, true);
       } catch (err: any) {
         console.warn("[useVoiceConversation] Send message error:", err);
         setErrorMessage(err?.message || "Failed to send voice message");
@@ -910,7 +980,7 @@ export function useVoiceConversation({
         isSubmittingRef.current = false;
       }
     },
-    [sendMessage, interruptPlayback, hasDocument, router, startListening]
+    [interruptPlayback, hasDocument, router, startListening]
   );
 
   // Monitor LLM streaming tokens incrementally for Streaming Voice Output
@@ -962,27 +1032,66 @@ export function useVoiceConversation({
   }, [messages, isLoading, processTtsQueue]);
 
   const prevIsOpenRef = useRef<boolean>(isOpen);
+  const prevEnableWakeWordRef = useRef<boolean>(enableWakeWord);
 
   // Clean up or transition between Voice Mode and Wake Word Mode
   useEffect(() => {
     isVoiceActiveRef.current = isOpen;
 
+    const isOpenChanged = prevIsOpenRef.current !== isOpen;
+    const wakeWordChanged = prevEnableWakeWordRef.current !== enableWakeWord;
+
     if (!isOpen) {
-      if (prevIsOpenRef.current) {
+      if (isOpenChanged && prevIsOpenRef.current) {
         console.log("[useVoiceConversation] isOpen transitioned to false -> executing exitVoiceMode");
         exitVoiceMode();
-      } else if (enableWakeWord) {
-        // Initial mount on Dashboard with isOpen=false -> start wake-word listener
-        console.log("[useVoiceConversation] Dashboard idle mount -> starting Wake Word listener ('Lumina')");
+      } else if (enableWakeWord && (wakeWordChanged || !recognitionRef.current)) {
+        console.log("[useVoiceConversation] Dashboard idle mount/update -> starting Wake Word listener ('Lumina')");
         startListening();
+      } else if (!enableWakeWord && wakeWordChanged) {
+        console.log("[useVoiceConversation] Wake Word disabled -> stopping STT");
+        stopSTT();
       }
     } else {
-      // Overlay opened manually or via wake word -> enter LISTENING
-      console.log("[useVoiceConversation] Overlay opened, starting conversation listener");
-      startListening();
+      if (isOpenChanged || voiceStateRef.current !== "LISTENING") {
+        console.log("[useVoiceConversation] Overlay opened, starting conversation listener");
+        startListening();
+      }
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, enableWakeWord, exitVoiceMode, startListening]);
+    prevEnableWakeWordRef.current = enableWakeWord;
+  }, [isOpen, enableWakeWord, exitVoiceMode, startListening, stopSTT]);
+
+  // Coordinate with external microphone components (e.g. ChatInput)
+  useEffect(() => {
+    const handleStopSpeech = () => {
+      // If idle (wake word running on Dashboard), yield microphone to other components like ChatInput
+      if (!isVoiceActiveRef.current) {
+        console.log("[useVoiceConversation] External speech active -> pausing wake-word STT");
+        stopSTT();
+      }
+    };
+
+    const handleSpeechReleased = () => {
+      // When external speech releases microphone, resume wake-word if on Dashboard
+      if (!isVoiceActiveRef.current && enableWakeWord && !recognitionRef.current) {
+        setTimeout(() => {
+          if (!isVoiceActiveRef.current && enableWakeWord && !recognitionRef.current) {
+            console.log("[useVoiceConversation] External speech ended -> resuming wake-word STT");
+            startListening();
+          }
+        }, 300);
+      }
+    };
+
+    window.addEventListener("lumina:stop-speech", handleStopSpeech);
+    window.addEventListener("lumina:speech-released", handleSpeechReleased);
+
+    return () => {
+      window.removeEventListener("lumina:stop-speech", handleStopSpeech);
+      window.removeEventListener("lumina:speech-released", handleSpeechReleased);
+    };
+  }, [enableWakeWord, startListening, stopSTT]);
 
   // Full unmount cleanup: stop STT, abort in-flight requests, clear audio & blob URLs, clear timers
   useEffect(() => {

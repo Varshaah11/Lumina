@@ -96,7 +96,7 @@ export interface UploadFileResponse {
 }
 
 export const chatService = {
-  uploadFile: async (file: File): Promise<UploadFileResponse> => {
+  uploadFile: async (file: File, signal?: AbortSignal): Promise<UploadFileResponse> => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const formData = new FormData();
     formData.append("file", file);
@@ -111,6 +111,7 @@ export const chatService = {
       method: "POST",
       headers,
       body: formData,
+      signal,
     });
 
     if (!res.ok) {

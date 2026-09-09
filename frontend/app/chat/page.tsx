@@ -99,6 +99,7 @@ function ChatContent() {
         isLoading={isLoading}
         messages={messages}
         hasDocument={hasDocument}
+        enableWakeWord={false}
       />
 
       {/* Chat Area */}
