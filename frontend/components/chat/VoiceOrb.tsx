@@ -5,9 +5,11 @@ import { Mic, Sparkles, Volume2, Loader2, AlertCircle, Check } from "lucide-reac
 interface VoiceOrbProps {
   state: VoiceState;
   onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
 }
 
-export function VoiceOrb({ state, onClick }: VoiceOrbProps) {
+export function VoiceOrb({ state, onClick, disabled = false, className = "" }: VoiceOrbProps) {
   // State specific gradient and shadow configs
   const getOrbStyle = () => {
     switch (state) {
@@ -67,7 +69,7 @@ export function VoiceOrb({ state, onClick }: VoiceOrbProps) {
   const IconComponent = style.icon;
 
   return (
-    <div className="relative flex items-center justify-center w-64 h-64 select-none">
+    <div className={`relative flex items-center justify-center w-64 h-64 select-none ${className}`}>
       {/* Outer Pulse Wave Rings for LISTENING and SPEAKING */}
       {state === "LISTENING" && (
         <motion.div
@@ -97,7 +99,15 @@ export function VoiceOrb({ state, onClick }: VoiceOrbProps) {
       {/* Main Orb Sphere */}
       <motion.button
         type="button"
+        disabled={disabled}
+        aria-label={`Voice Orb: ${style.label}`}
         onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!disabled) onClick?.();
+          }
+        }}
         animate={
           state === "LISTENING"
             ? { scale: [1, 1.08, 1] }
@@ -112,7 +122,7 @@ export function VoiceOrb({ state, onClick }: VoiceOrbProps) {
             ? { duration: 6, repeat: Infinity, ease: "linear" }
             : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }
         }
-        className={`w-48 h-48 rounded-full bg-gradient-to-tr ${style.gradient} ${style.shadow} p-1 backdrop-blur-3xl flex items-center justify-center cursor-pointer transition-all duration-500 group relative overflow-hidden active:scale-95`}
+        className={`w-48 h-48 rounded-full bg-gradient-to-tr ${style.gradient} ${style.shadow} p-1 backdrop-blur-3xl flex items-center justify-center cursor-pointer transition-all duration-500 group relative overflow-hidden active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed`}
       >
         {/* Shimmer overlay */}
         <div className="absolute inset-0 bg-white/10 rounded-full blur-md opacity-40 group-hover:opacity-70 transition-opacity" />

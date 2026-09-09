@@ -51,10 +51,10 @@ export function DashboardLayout({ children, noScroll = false }: DashboardLayoutP
           className={`flex-1 overflow-x-hidden ${
             noScroll
               ? "overflow-hidden px-4 md:px-8 pt-4 md:pt-6 pb-0"
-              : "overflow-y-auto p-6 md:p-8"
+              : "overflow-y-auto p-4 sm:p-6 md:p-8"
           }`}
         >
-          <div className="max-w-6xl mx-auto h-full">
+          <div className="max-w-6xl mx-auto w-full min-h-full">
             {children}
           </div>
         </main>

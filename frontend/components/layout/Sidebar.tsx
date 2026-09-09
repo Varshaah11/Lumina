@@ -225,7 +225,9 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       >
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-8 bg-black border border-white/20 rounded-full p-1 text-gray-400 hover:text-white transition-colors z-30"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="absolute -right-3 top-8 bg-black border border-white/20 rounded-full p-1 text-gray-400 hover:text-white transition-colors z-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 cursor-pointer"
         >
           {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
@@ -258,6 +260,8 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                 <Link
                   key={item.name}
                   href={item.href}
+                  title={item.name}
+                  aria-label={item.name}
                   onClick={(e) => {
                     if (item.name === "New Chat") {
                       setSearchQuery("");
@@ -267,9 +271,11 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                       window.dispatchEvent(new Event("new-chat"));
                     }
                   }}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${
+                  className={`flex items-center gap-3 py-3 rounded-xl transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                    isCollapsed ? "justify-center px-0" : "px-3"
+                  } ${
                     isActive
-                      ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400"
+                      ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 font-medium"
                       : "text-gray-400 hover:bg-white/5 hover:text-white"
                   }`}
                 >
@@ -395,7 +401,10 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                         <Link
                           href={`/chat?chatId=${chat.id}`}
                           title={chat.title}
-                          className="flex items-center gap-3 min-w-0 flex-1 px-3 py-2.5 rounded-xl outline-none focus-visible:ring-1 focus-visible:ring-indigo-500/50"
+                          aria-label={`Open chat: ${chat.title}`}
+                          className={`flex items-center gap-3 min-w-0 flex-1 py-2.5 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/80 ${
+                            isCollapsed ? "justify-center px-0" : "px-3"
+                          }`}
                         >
                           <MessageSquare className="w-4 h-4 shrink-0" />
                           <AnimatePresence>
@@ -404,7 +413,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                                 initial={{ opacity: 0, width: 0 }}
                                 animate={{ opacity: 1, width: "auto" }}
                                 exit={{ opacity: 0, width: 0 }}
-                                className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1"
+                                className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0 block truncate"
                               >
                                 {chat.title}
                               </motion.span>
@@ -456,13 +465,17 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${
+                title={item.name}
+                aria-label={item.name}
+                className={`flex items-center gap-3 py-3 rounded-xl transition-all group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                  isCollapsed ? "justify-center px-0" : "px-3"
+                } ${
                   isActive
-                    ? "bg-white/10 text-white"
+                    ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 font-medium"
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <item.icon className="w-5 h-5 shrink-0" />
+                <item.icon className={`w-5 h-5 shrink-0 ${isActive ? "text-indigo-400" : "group-hover:text-white"}`} />
                 <AnimatePresence>
                   {!isCollapsed && (
                     <motion.span
@@ -480,8 +493,13 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
           })}
 
           <button
+            type="button"
             onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all group text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            title="Logout"
+            aria-label="Logout"
+            className={`w-full flex items-center gap-3 py-3 rounded-xl transition-all group text-red-400 hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer ${
+              isCollapsed ? "justify-center px-0" : "px-3"
+            }`}
           >
             <LogOut className="w-5 h-5 shrink-0" />
             <AnimatePresence>

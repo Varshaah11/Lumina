@@ -20,9 +20,9 @@ export default function ProfilePage() {
           action={
             <Button
               variant="outline"
-              className="bg-white text-black border-white hover:bg-black hover:text-white"
+              className="group bg-white/10 hover:bg-indigo-600/30 border border-white/15 hover:border-indigo-500/40 text-indigo-300 hover:text-white active:scale-95 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 cursor-pointer"
             >
-              <Edit2 className="w-4 h-4 mr-2" />
+              <Edit2 className="w-4 h-4 mr-0.5 text-indigo-300 group-hover:text-white transition-colors" />
               Edit Profile
             </Button>
           }

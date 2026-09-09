@@ -32,12 +32,12 @@ export function Topbar() {
   ];
 
   return (
-    <header className="h-20 w-full border-b border-white/5 bg-black/50 backdrop-blur-xl flex items-center justify-between px-6 z-10 sticky top-0 md:static">
+    <header className="h-20 w-full border-b border-white/5 bg-black/50 backdrop-blur-xl flex items-center justify-between px-4 sm:px-6 z-10 sticky top-0 md:static">
       <div className="flex items-center gap-4">
         {/* Mobile menu trigger */}
         <div className="md:hidden">
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
-            <SheetTrigger className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 h-9 w-9 text-gray-400 hover:text-white hover:bg-white/10">
+            <SheetTrigger className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:pointer-events-none disabled:opacity-50 h-9 w-9 text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer">
               <Menu className="w-6 h-6" />
               <span className="sr-only">Toggle menu</span>
             </SheetTrigger>
@@ -73,13 +73,13 @@ export function Topbar() {
                             window.dispatchEvent(new Event("new-chat"));
                           }
                         }}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                          isActive 
-                            ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400" 
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                          isActive
+                            ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/20 text-indigo-400 font-medium"
                             : "text-gray-400 hover:bg-white/5 hover:text-white"
                         }`}
                       >
-                        <item.icon className="w-5 h-5" />
+                        <item.icon className={`w-5 h-5 ${isActive ? "text-indigo-400" : ""}`} />
                         <span className="font-medium">{item.name}</span>
                       </Link>
                     );
@@ -87,11 +87,12 @@ export function Topbar() {
                 </div>
                 <div className="pt-4 border-t border-white/5">
                   <button
+                    type="button"
                     onClick={() => {
                       setIsOpen(false);
                       logout();
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
                   >
                     <LogOut className="w-5 h-5" />
                     <span className="font-medium">Logout</span>
@@ -106,12 +107,17 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="hidden md:flex flex-col items-end">
-          <span className="text-sm font-medium text-white">{user?.name || "User"}</span>
-          <span className="text-xs text-gray-500">{user?.email}</span>
+        <div className="hidden md:flex flex-col items-end max-w-[200px] lg:max-w-[280px]">
+          <span className="text-sm font-medium text-white truncate w-full text-right">{user?.name || "User"}</span>
+          <span className="text-xs text-gray-500 truncate w-full text-right">{user?.email}</span>
         </div>
-        <Link href="/profile">
-          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center hover:ring-2 hover:ring-white/20 transition-all cursor-pointer shadow-lg">
+        <Link
+          href="/profile"
+          aria-label={`View profile for ${user?.name || "User"}`}
+          title="View Profile"
+          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+        >
+          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center hover:ring-2 hover:ring-white/20 active:scale-95 transition-all cursor-pointer shadow-lg">
             <span className="text-white font-medium">{getInitials(user?.name)}</span>
           </div>
         </Link>

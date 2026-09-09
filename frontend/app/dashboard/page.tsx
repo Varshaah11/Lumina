@@ -9,16 +9,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { VoiceOrb } from "@/components/chat/VoiceOrb";
 import { VoiceAssistantOverlay } from "@/components/chat/VoiceAssistantOverlay";
 import { motion } from "framer-motion";
-import {
-  Mic,
-  MessageSquarePlus,
-  FileUp,
-  GraduationCap,
-  Sparkles,
-  MessageSquare,
-  ArrowRight,
-  FileText,
-} from "lucide-react";
+import { Mic, MessageSquarePlus, FileUp, GraduationCap, Sparkles, MessageSquare, ArrowRight, FileText, NotebookPen, Lightbulb, Target } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
@@ -96,7 +87,7 @@ function DashboardContent() {
 
       <div className="max-w-5xl mx-auto pb-12 space-y-10">
         {/* Main Hero & Lumina Voice Orb Centerpiece */}
-        <section className="relative flex flex-col items-center justify-center pt-6 pb-8 text-center rounded-3xl bg-gradient-to-b from-white/[0.04] to-transparent border border-white/10 backdrop-blur-2xl p-6 sm:p-10 shadow-2xl overflow-hidden">
+        <section className="relative flex flex-col items-center justify-center pt-6 pb-8 text-center rounded-3xl bg-gradient-to-b from-white/[0.04] to-transparent border border-white/10 backdrop-blur-2xl p-5 sm:p-8 md:p-10 shadow-2xl overflow-hidden">
           {/* Ambient Background Glow */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500/15 rounded-full blur-[100px] pointer-events-none" />
 
@@ -133,7 +124,7 @@ function DashboardContent() {
 
             <Button
               onClick={() => setIsVoiceModeOpen(true)}
-              className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 text-white font-semibold text-base sm:text-lg px-8 py-6 rounded-2xl shadow-xl shadow-indigo-500/25 hover:scale-105 transition-all flex items-center gap-3 cursor-pointer"
+              className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 text-white font-semibold text-base sm:text-lg px-8 py-6 rounded-2xl shadow-xl shadow-indigo-500/25 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             >
               <Mic className="w-6 h-6 animate-pulse" />
               <span>Start Talking</span>
@@ -146,7 +137,8 @@ function DashboardContent() {
               <button
                 type="button"
                 onClick={() => setIsWakeWordEnabled((prev) => !prev)}
-                className="ml-1 text-[11px] font-medium text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                aria-label={isWakeWordEnabled ? "Disable Lumina hands-free wake word" : "Enable Lumina hands-free wake word"}
+                className="ml-1 text-[11px] font-medium text-indigo-400 hover:text-indigo-300 underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 rounded px-1"
               >
                 {isWakeWordEnabled ? "Disable" : "Enable"}
               </button>
@@ -162,11 +154,20 @@ function DashboardContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Action 1: Start Talking */}
             <motion.div
+              role="button"
+              tabIndex={0}
+              aria-label="Start Talking: Continuous voice conversation loop"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 }}
               onClick={() => setIsVoiceModeOpen(true)}
-              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-indigo-500/40 hover:bg-white/[0.08] transition-all cursor-pointer shadow-sm flex flex-col justify-between"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setIsVoiceModeOpen(true);
+                }
+              }}
+              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-indigo-500/40 hover:bg-white/[0.08] active:scale-[0.98] transition-all cursor-pointer shadow-sm flex flex-col justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/80"
             >
               <div className="w-11 h-11 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <Mic className="w-5 h-5" />
@@ -183,11 +184,24 @@ function DashboardContent() {
 
             {/* Action 2: New Chat */}
             <motion.div
+              role="button"
+              tabIndex={0}
+              aria-label="New Chat: Start a fresh conversation"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              onClick={() => router.push("/chat")}
-              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-500/40 hover:bg-white/[0.08] transition-all cursor-pointer shadow-sm flex flex-col justify-between"
+              onClick={() => {
+                router.push("/chat");
+                window.dispatchEvent(new Event("new-chat"));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  router.push("/chat");
+                  window.dispatchEvent(new Event("new-chat"));
+                }
+              }}
+              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-500/40 hover:bg-white/[0.08] active:scale-[0.98] transition-all cursor-pointer shadow-sm flex flex-col justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/80"
             >
               <div className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <MessageSquarePlus className="w-5 h-5" />
@@ -204,11 +218,20 @@ function DashboardContent() {
 
             {/* Action 3: Upload Document */}
             <motion.div
+              role="button"
+              tabIndex={0}
+              aria-label="Upload Document: Analyze PDF, DOCX, TXT, or MD"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
               onClick={() => router.push("/chat?action=upload")}
-              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-cyan-500/40 hover:bg-white/[0.08] transition-all cursor-pointer shadow-sm flex flex-col justify-between"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  router.push("/chat?action=upload");
+                }
+              }}
+              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-cyan-500/40 hover:bg-white/[0.08] active:scale-[0.98] transition-all cursor-pointer shadow-sm flex flex-col justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/80"
             >
               <div className="w-11 h-11 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <FileUp className="w-5 h-5" />
@@ -225,6 +248,9 @@ function DashboardContent() {
 
             {/* Action 4: Study with Lumina */}
             <motion.div
+              role="button"
+              tabIndex={0}
+              aria-label="Study with Lumina: Notes, quizzes, and explanations"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
@@ -235,7 +261,17 @@ function DashboardContent() {
                   )}`
                 )
               }
-              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-500/40 hover:bg-white/[0.08] transition-all cursor-pointer shadow-sm flex flex-col justify-between"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  router.push(
+                    `/chat?prompt=${encodeURIComponent(
+                      "Create exam-ready study notes and quiz me on a topic."
+                    )}`
+                  );
+                }
+              }}
+              className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-500/40 hover:bg-white/[0.08] active:scale-[0.98] transition-all cursor-pointer shadow-sm flex flex-col justify-between focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/80"
             >
               <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <GraduationCap className="w-5 h-5" />
@@ -253,8 +289,8 @@ function DashboardContent() {
         </section>
 
         {/* Document Intelligence Section */}
-        <section className="p-6 sm:p-8 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <section className="p-5 sm:p-8 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <FileText className="w-5 h-5 text-indigo-400" />
@@ -267,9 +303,15 @@ function DashboardContent() {
             <Button
               variant="outline"
               onClick={() => router.push("/chat?action=upload")}
-              className="group border-white/10 bg-white text-black hover:bg-white/10 hover:text-white text-xs font-medium shrink-0 self-start sm:self-auto"
+              className="group border border-white/15 bg-white/10
+              text-indigo-300
+              hover:bg-indigo-600/30 hover:border-indigo-500/40 hover:text-white
+              text-sm font-medium shrink-0 self-start sm:self-auto
+              active:scale-95 transition-all shadow-sm hover:shadow-indigo-500/10
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
+              cursor-pointer"
             >
-              <FileUp className="w-3.5 h-3.5 mr-1.5 text-black group-hover:text-white" />
+              <FileUp className="w-3.5 h-3.5 mr-0.5 text-indigo-300 group-hover:text-white transition-colors" />
               Choose File
             </Button>
           </div>
@@ -278,39 +320,52 @@ function DashboardContent() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2">
             <button
               type="button"
+              aria-label="Summarize document in 5 key points"
               onClick={() => handleDocumentQuickAction("Summarize this document in 5 key points.")}
-              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 text-xs font-medium transition-all text-center cursor-pointer"
+              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 hover:text-white text-sm font-medium transition-all text-center cursor-pointer shadow-sm hover:shadow-indigo-500/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 flex items-center justify-center gap-2"
             >
-              ✨ Summarize
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span>Summarize</span>
             </button>
+
             <button
               type="button"
+              aria-label="Create exam-ready study notes from document"
               onClick={() =>
                 handleDocumentQuickAction("Create exam-ready study notes from this document.")
               }
-              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 text-xs font-medium transition-all text-center cursor-pointer"
+              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 hover:text-white text-sm font-medium transition-all text-center cursor-pointer shadow-sm hover:shadow-indigo-500/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 flex items-center justify-center gap-2"
             >
-              📝 Make Notes
+              <NotebookPen className="w-4 h-4 shrink-0" />
+              <span>Make Notes</span>
             </button>
+
             <button
               type="button"
+              aria-label="Explain contents of document like a beginner"
               onClick={() =>
-                handleDocumentQuickAction("Explain the contents of this document like I am a beginner.")
+                handleDocumentQuickAction(
+                  "Explain the contents of this document like I am a beginner."
+                )
               }
-              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 text-xs font-medium transition-all text-center cursor-pointer"
+              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 hover:text-white text-sm font-medium transition-all text-center cursor-pointer shadow-sm hover:shadow-indigo-500/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 flex items-center justify-center gap-2"
             >
-              💡 Explain
+              <Lightbulb className="w-4 h-4 shrink-0" />
+              <span>Explain</span>
             </button>
+
             <button
               type="button"
+              aria-label="Quiz me on this document with 5 questions"
               onClick={() =>
                 handleDocumentQuickAction(
                   "Quiz me on this document with 5 questions. Ask one question at a time."
                 )
               }
-              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 text-xs font-medium transition-all text-center cursor-pointer"
+              className="px-4 py-3 rounded-xl bg-white/5 hover:bg-indigo-500/20 border border-white/10 hover:border-indigo-500/30 text-indigo-200 hover:text-white text-sm font-medium transition-all text-center cursor-pointer shadow-sm hover:shadow-indigo-500/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 flex items-center justify-center gap-2"
             >
-              🎯 Quiz Me
+              <Target className="w-4 h-4 shrink-0" />
+              <span>Quiz Me</span>
             </button>
           </div>
         </section>
@@ -324,7 +379,8 @@ function DashboardContent() {
             <button
               type="button"
               onClick={() => router.push("/history")}
-              className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1 cursor-pointer"
+              aria-label="View all chat history"
+              className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 rounded-lg px-2 py-1"
             >
               <span>View All</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -341,8 +397,11 @@ function DashboardContent() {
               <p className="text-sm font-medium text-gray-300">No conversations yet.</p>
               <p className="text-xs text-gray-500">Start a conversation with Lumina.</p>
               <Button
-                onClick={() => router.push("/chat")}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl mt-2"
+                onClick={() => {
+                  router.push("/chat");
+                  window.dispatchEvent(new Event("new-chat"));
+                }}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl mt-2 active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
               >
                 Start Chat
               </Button>
@@ -352,10 +411,19 @@ function DashboardContent() {
               {recentChats.map((chat) => (
                 <motion.div
                   key={chat.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open conversation: ${chat.title}`}
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   onClick={() => router.push(`/chat?chatId=${chat.id}`)}
-                  className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-indigo-500/30 hover:bg-white/[0.08] transition-all cursor-pointer flex items-center justify-between group shadow-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/chat?chatId=${chat.id}`);
+                    }
+                  }}
+                  className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-indigo-500/30 hover:bg-white/[0.08] active:scale-[0.99] transition-all cursor-pointer flex items-center justify-between group shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
                 >
                   <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-colors shrink-0">
