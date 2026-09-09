@@ -74,6 +74,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const isStartingRef = useRef(false);
   const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-trigger file upload or prompt population if query params present
@@ -175,6 +176,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
   };
 
   const stopListening = useCallback(() => {
+    isStartingRef.current = false;
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -191,6 +193,8 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
 
   const startListening = useCallback(() => {
     if (typeof window === "undefined") return;
+    if (isStartingRef.current) return;
+    isStartingRef.current = true;
 
     // Signal any background listeners (e.g. Dashboard wake-word) to release the microphone
     window.dispatchEvent(new Event("lumina:stop-speech"));
@@ -199,6 +203,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognitionClass) {
+      isStartingRef.current = false;
       setIsSupported(false);
       showNotice("Voice input isn't supported in this browser.");
       return;
@@ -220,6 +225,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       recognition.interimResults = true;
       recognition.lang = navigator.language || "en-US";
       recognition.onstart = () => {
+        isStartingRef.current = false;
         setIsListening(true);
         setNoticeMessage(null);
       };
@@ -248,6 +254,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        isStartingRef.current = false;
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           showNotice("Microphone permission denied.");
           stopListening();
@@ -263,6 +270,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       };
 
       recognition.onend = () => {
+        isStartingRef.current = false;
         setIsListening(false);
         recognitionRef.current = null;
         if (typeof window !== "undefined") {
@@ -273,6 +281,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
       recognitionRef.current = recognition;
       recognition.start();
     } catch {
+      isStartingRef.current = false;
       showNotice("Failed to start voice input.");
       stopListening();
     }
@@ -395,9 +404,13 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
         </div>
       )}
 
-      {/* Listening indicator */}
+      {/* Visual listening indicator */}
       {isListening && (
-        <div className="mb-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs animate-pulse w-fit">
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs animate-pulse w-fit"
+        >
           <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
           <span>Listening...</span>
         </div>
@@ -405,7 +418,11 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
 
       {/* Validation notice in normal document flow */}
       {noticeMessage && (
-        <div className="mb-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs w-fit">
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs w-fit"
+        >
           <span>{noticeMessage}</span>
         </div>
       )}
@@ -460,7 +477,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
               }
               onOpenVoiceMode();
             }}
-            className="hidden sm:flex shrink-0 h-10 w-10 rounded-xl mb-0.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20 shadow-sm"
+            className="hidden sm:flex shrink-0 h-10 w-10 rounded-xl mb-0.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 border border-indigo-500/20 shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
             title="Launch Voice Assistant Mode"
             aria-label="Launch Voice Assistant Mode"
           >
@@ -474,7 +491,7 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
           size="icon"
           disabled={isLoading}
           onClick={toggleListening}
-          className={`shrink-0 h-10 w-10 rounded-xl mb-0.5 transition-all ${
+          className={`shrink-0 h-10 w-10 rounded-xl mb-0.5 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
             isLoading
               ? "text-gray-600 opacity-50 cursor-not-allowed"
               : isListening

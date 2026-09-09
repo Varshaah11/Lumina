@@ -69,7 +69,7 @@ export function VoiceOrb({ state, onClick, disabled = false, className = "" }: V
   const IconComponent = style.icon;
 
   return (
-    <div className={`relative flex items-center justify-center w-64 h-64 select-none ${className}`}>
+    <div className={`relative flex items-center justify-center w-52 h-52 sm:w-64 sm:h-64 select-none ${className}`}>
       {/* Outer Pulse Wave Rings for LISTENING and SPEAKING */}
       {state === "LISTENING" && (
         <motion.div
@@ -122,7 +122,7 @@ export function VoiceOrb({ state, onClick, disabled = false, className = "" }: V
             ? { duration: 6, repeat: Infinity, ease: "linear" }
             : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }
         }
-        className={`w-48 h-48 rounded-full bg-gradient-to-tr ${style.gradient} ${style.shadow} p-1 backdrop-blur-3xl flex items-center justify-center cursor-pointer transition-all duration-500 group relative overflow-hidden active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed`}
+        className={`w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-gradient-to-tr ${style.gradient} ${style.shadow} p-1 backdrop-blur-3xl flex items-center justify-center cursor-pointer transition-all duration-500 group relative overflow-hidden active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/80 focus-visible:ring-offset-4 focus-visible:ring-offset-black disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed`}
       >
         {/* Shimmer overlay */}
         <div className="absolute inset-0 bg-white/10 rounded-full blur-md opacity-40 group-hover:opacity-70 transition-opacity" />

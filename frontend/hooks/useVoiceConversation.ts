@@ -173,6 +173,8 @@ export function useVoiceConversation({
 
   // State Invariant & Lifecycle tracking refs
   const isListeningRef = useRef<boolean>(false);
+  const isStartingRef = useRef<boolean>(false);
+  const isLoopEnabledRef = useRef<boolean>(isLoopEnabled);
   const isPlayingAudioRef = useRef<boolean>(false);
   const isSubmittingRef = useRef<boolean>(false);
   const isVoiceActiveRef = useRef<boolean>(isOpen);
@@ -211,6 +213,10 @@ export function useVoiceConversation({
   useEffect(() => {
     isVoiceActiveRef.current = isOpen;
   }, [isOpen]);
+
+  useEffect(() => {
+    isLoopEnabledRef.current = isLoopEnabled;
+  }, [isLoopEnabled]);
 
   useEffect(() => {
     voiceStateRef.current = voiceState;
@@ -268,6 +274,7 @@ export function useVoiceConversation({
   const stopSTT = useCallback(() => {
     console.log("[STT] Stopping SpeechRecognition");
     isListeningRef.current = false;
+    isStartingRef.current = false;
 
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
@@ -352,6 +359,25 @@ export function useVoiceConversation({
   const startListening = useCallback((): void => {
     if (typeof window === "undefined") return;
 
+    // Guard against rapid duplicate clicks while recognition is initializing
+    if (isStartingRef.current) {
+      console.log("[startListening] Recognition is currently initializing, ignoring duplicate trigger.");
+      return;
+    }
+
+    // If user clicks while assistant is actively speaking or generating, immediately interrupt and transition to listening
+    if (isPlayingAudioRef.current || voiceStateRef.current === "SPEAKING" || voiceStateRef.current === "THINKING") {
+      console.log("[startListening] Interrupting active playback/generation to start listening");
+      interruptPlayback();
+      stopGenerationRef.current();
+      isSubmittingRef.current = false;
+      setTranscript("");
+      latestTranscriptRef.current = "";
+      turnStartResultIndexRef.current = 0;
+      lastResultsLengthRef.current = 0;
+      setActionFeedback(null);
+    }
+
     if (isListeningRef.current && recognitionRef.current) {
       if (isVoiceActiveRef.current && voiceStateRef.current === "LISTENING") {
         console.log("[startListening] Recognition is already active and in LISTENING state.");
@@ -397,6 +423,7 @@ export function useVoiceConversation({
         if (activeSessionIdRef.current !== sessionId) return;
         console.log(`[STT] recognition.onstart (sessionId=${sessionId}, isVoiceActive=${isVoiceActiveRef.current})`);
         isListeningRef.current = true;
+        isStartingRef.current = false;
         if (isVoiceActiveRef.current) {
           if (!isPlayingAudioRef.current && voiceStateRef.current !== "THINKING" && voiceStateRef.current !== "SPEAKING") {
             setVoiceState("LISTENING");
@@ -493,26 +520,40 @@ export function useVoiceConversation({
       recognition.onerror = (event: any) => {
         if (activeSessionIdRef.current !== sessionId) return;
         console.log(`[STT] recognition.onerror (${event.error})`);
+        isStartingRef.current = false;
         if (event.error === "no-speech") {
           // Benign silence in continuous mode — do not abort listening
           return;
         }
         isListeningRef.current = false;
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          setErrorMessage("Microphone permission denied.");
+          setErrorMessage("Microphone access was blocked. Please allow microphone permissions in your browser URL bar.");
           if (isVoiceActiveRef.current) {
             setVoiceState("ERROR");
           }
           stopSTT();
+        } else if (event.error === "audio-capture") {
+          setErrorMessage("No microphone detected. Please plug in or select a microphone and try again.");
+          if (isVoiceActiveRef.current) {
+            setVoiceState("ERROR");
+          }
+          stopSTT();
+        } else if (event.error === "network") {
+          setErrorMessage("Voice recognition network error. Please check your internet connection.");
+          if (isVoiceActiveRef.current) {
+            setVoiceState("ERROR");
+          }
         } else if (event.error !== "aborted") {
           if (isVoiceActiveRef.current) {
-            setErrorMessage(`Voice recognition error (${event.error})`);
+            setErrorMessage(`Voice recognition encountered an issue (${event.error}). Tap to retry.`);
+            setVoiceState("ERROR");
           }
         }
       };
 
       recognition.onend = () => {
         console.log(`[STT] recognition.onend (sessionId=${sessionId}, activeSessionId=${activeSessionIdRef.current}, isVoiceActive=${isVoiceActiveRef.current})`);
+        isStartingRef.current = false;
         if (activeSessionIdRef.current !== sessionId) {
           console.log("[STT] Ignoring onend from stale SpeechRecognition instance.");
           return;
@@ -525,7 +566,7 @@ export function useVoiceConversation({
           if (voiceStateRef.current === "LISTENING") {
             if (latestTranscriptRef.current.trim().length >= 2 && !isSubmittingRef.current) {
               submitTranscript(latestTranscriptRef.current);
-            } else if (!isSubmittingRef.current && isLoopEnabled) {
+            } else if (!isSubmittingRef.current && isLoopEnabledRef.current) {
               setTimeout(() => {
                 if (
                   activeSessionIdRef.current === sessionId &&
@@ -562,12 +603,14 @@ export function useVoiceConversation({
 
       recognitionRef.current = recognition;
       console.log(`[STT] starting recognition (sessionId=${sessionId}, isVoiceActive=${isVoiceActiveRef.current})`);
+      isStartingRef.current = true;
       recognition.start();
     } catch (err: any) {
       console.warn("[useVoiceConversation] Failed to start speech recognition:", err);
+      isStartingRef.current = false;
       isListeningRef.current = false;
       if (isVoiceActiveRef.current) {
-        setErrorMessage("Failed to activate microphone.");
+        setErrorMessage("Failed to activate microphone. Tap to retry.");
         setVoiceState("ERROR");
       }
     }
@@ -749,7 +792,7 @@ export function useVoiceConversation({
         setActionFeedback(null);
         isSubmittingRef.current = false;
 
-        if (isVoiceActiveRef.current && isLoopEnabled) {
+        if (isVoiceActiveRef.current && isLoopEnabledRef.current) {
           console.log("[VOICE STREAM] All audio chunks completed naturally -> restarting clean listening turn");
           setVoiceState("LISTENING");
           voiceStateRef.current = "LISTENING";
@@ -774,7 +817,7 @@ export function useVoiceConversation({
         );
       }
     }
-  }, [isLoopEnabled, startListening]);
+  }, [startListening]);
 
   // TTS Fetch Worker for an individual chunk with AbortController support
   const fetchTtsChunk = useCallback(async (turnId: number, seq: number, text: string) => {

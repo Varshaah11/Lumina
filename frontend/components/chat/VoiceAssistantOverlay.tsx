@@ -102,7 +102,8 @@ export function VoiceAssistantOverlay({
           <Button
             variant="ghost"
             onClick={handleExit}
-            className="flex items-center gap-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl px-3 py-2 text-sm font-medium transition-all"
+            className="flex items-center gap-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl px-3 py-2 text-sm font-medium transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+            aria-label="Return to text view"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Text View</span>
@@ -114,16 +115,17 @@ export function VoiceAssistantOverlay({
               <span>Lumina Assistant</span>
             </span>
 
-            {/* Temporary Explicit Test TTS Audio Button */}
+            {/* Test TTS Audio Button (Responsive: hidden on extra small viewports to avoid header wrap) */}
             <Button
               variant="outline"
               size="sm"
               onClick={testTTSAudioPlayback}
-              className="bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs font-semibold rounded-full px-3 py-1 flex items-center gap-1.5"
-              title="Test direct /tts fetch and HTML5 Audio playback from user click"
+              className="hidden sm:inline-flex bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs font-semibold rounded-full px-3 py-1 items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              title="Test direct /tts fetch and HTML5 Audio playback"
+              aria-label="Test audio playback"
             >
               <Volume2 className="w-3.5 h-3.5" />
-              <span>🔊 Test Audio Playback</span>
+              <span>🔊 Test Audio</span>
             </Button>
           </div>
 
@@ -131,8 +133,9 @@ export function VoiceAssistantOverlay({
             variant="ghost"
             size="icon"
             onClick={handleExit}
-            className="text-gray-400 hover:text-white hover:bg-white/10 rounded-xl h-10 w-10"
+            className="text-gray-400 hover:text-white hover:bg-white/10 rounded-xl h-10 w-10 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
             title="Close Voice Mode"
+            aria-label="Close voice mode"
           >
             <X className="w-5 h-5" />
           </Button>
@@ -165,30 +168,49 @@ export function VoiceAssistantOverlay({
             }}
           />
 
-          {/* Status Headline */}
-          <div className="mt-6 flex flex-col items-center text-center max-w-md px-4 min-h-[50px]">
+          {/* Status Headline with ARIA live announcement for accessibility */}
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="mt-4 sm:mt-6 flex flex-col items-center text-center max-w-md px-4 min-h-[52px]"
+          >
             <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white mb-1">
               {voiceState === "LISTENING" && "Lumina is Listening..."}
-              {voiceState === "THINKING" && "Lumina is Thinking... (Say 'Stop' to cancel)"}
-              {voiceState === "SPEAKING" && "Lumina is Speaking... (Say 'Stop' to interrupt)"}
+              {voiceState === "THINKING" && "Lumina is Thinking..."}
+              {voiceState === "SPEAKING" && "Lumina is Speaking..."}
               {voiceState === "ACTION" && (actionFeedback || "Executing Action...")}
-              {voiceState === "IDLE" && "Tap the Orb or say 'Lumina' to Speak"}
-              {voiceState === "ERROR" && "Voice Error"}
+              {voiceState === "IDLE" && "Listening Paused"}
+              {voiceState === "ERROR" && "Microphone / Voice Error"}
             </h2>
 
             <p className="text-xs sm:text-sm text-gray-400">
               {voiceState === "LISTENING" && "Speak naturally into your microphone."}
-              {voiceState === "THINKING" && "Processing intent and response..."}
-              {voiceState === "SPEAKING" && "Interrupt anytime by saying 'stop' or 'Lumina stop'."}
-              {voiceState === "IDLE" && "Continuous conversation paused."}
-              {voiceState === "ERROR" && (errorMessage || "Check microphone settings.")}
+              {voiceState === "THINKING" && "Processing your query... (Say 'Stop' to cancel)"}
+              {voiceState === "SPEAKING" && "Tap the Orb or say 'Stop' anytime to interrupt."}
+              {voiceState === "ACTION" && (actionFeedback || "Executing your requested action...")}
+              {voiceState === "IDLE" && "Tap the Orb or Microphone button below to speak."}
+              {voiceState === "ERROR" && (errorMessage || "Check microphone settings and permissions.")}
             </p>
+
+            {/* Actionable Retry Button on ERROR state */}
+            {voiceState === "ERROR" && (
+              <Button
+                size="sm"
+                onClick={() => startListening()}
+                className="mt-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-1.5 rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                aria-label="Retry voice input"
+              >
+                <Mic className="w-3.5 h-3.5 mr-1.5" />
+                <span>Try Again</span>
+              </Button>
+            )}
           </div>
 
           {/* Multi-Turn Voice Conversation Transcript Stream */}
           <div
             ref={scrollRef}
-            className="mt-4 w-full max-w-xl max-h-[45vh] overflow-y-auto px-4 space-y-3 no-scrollbar"
+            className="mt-3 sm:mt-4 w-full max-w-xl max-h-[35vh] sm:max-h-[42vh] overflow-y-auto px-4 space-y-3 no-scrollbar"
           >
             {recentMessages.map((msg) => (
               <div
@@ -309,29 +331,42 @@ export function VoiceAssistantOverlay({
         </div>
 
         {/* Bottom Voice Control Toolbar */}
-        <div className="w-full max-w-xl flex items-center justify-between gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-2xl shadow-2xl z-10 mb-2">
+        <div className="w-full max-w-xl flex items-center justify-between gap-2 sm:gap-4 p-3 sm:p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-2xl shadow-2xl z-10 mb-2">
           {/* Continuous Loop Toggle */}
           <button
             type="button"
+            role="switch"
+            aria-checked={isLoopEnabled}
+            aria-label="Toggle continuous conversation mode"
             onClick={toggleLoop}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all ${isLoopEnabled
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 cursor-pointer ${isLoopEnabled
                 ? "bg-indigo-500/20 border border-indigo-500/30 text-indigo-300"
                 : "bg-white/5 border border-white/10 text-gray-400 hover:text-white"
               }`}
             title="Auto-resume microphone after Lumina speaks"
           >
+            <span
+              className={`w-2 h-2 rounded-full transition-colors ${isLoopEnabled ? "bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" : "bg-gray-500"
+                }`}
+              aria-hidden="true"
+            />
             <RefreshCw className={`w-3.5 h-3.5 ${isLoopEnabled ? "text-indigo-400" : ""}`} />
-            <span>Continuous Loop: {isLoopEnabled ? "ON" : "OFF"}</span>
+            <span className="hidden sm:inline">Continuous Mode:</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isLoopEnabled ? "bg-indigo-500/30 text-indigo-200" : "bg-white/10 text-gray-400"
+              }`}>
+              {isLoopEnabled ? "ON" : "OFF"}
+            </span>
           </button>
 
           {/* Center Mic Action Button */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {voiceState === "LISTENING" ? (
               <Button
                 onClick={handleStop}
                 variant="destructive"
                 size="icon"
-                className="h-12 w-12 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30 transition-all"
+                aria-label="Pause microphone"
+                className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 cursor-pointer"
                 title="Pause listening"
               >
                 <MicOff className="w-5 h-5" />
@@ -339,7 +374,8 @@ export function VoiceAssistantOverlay({
             ) : (
               <Button
                 onClick={startListening}
-                className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 hover:scale-105 transition-all"
+                aria-label="Start microphone"
+                className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 cursor-pointer"
                 title="Start listening"
               >
                 <Mic className="w-5 h-5" />
@@ -352,10 +388,11 @@ export function VoiceAssistantOverlay({
                 onClick={handleStop}
                 variant="destructive"
                 size="icon"
-                className="h-12 w-12 rounded-2xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 shadow-lg transition-all"
+                aria-label="Stop response and speech"
+                className="h-11 w-11 sm:h-12 sm:w-12 rounded-2xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 cursor-pointer"
                 title="Stop generation and speech"
               >
-                <Square className="w-5 h-5 fill-current" />
+                <Square className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
               </Button>
             )}
           </div>
