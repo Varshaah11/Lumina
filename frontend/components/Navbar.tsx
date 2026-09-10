@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Menu, Sparkles, User as UserIcon, LogOut, Settings, LayoutDashboard, MessageSquare } from "lucide-react";
+import { Menu, Sparkles, User as UserIcon, LogOut, LayoutDashboard, MessageSquare } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export function Navbar() {
@@ -117,12 +117,6 @@ export function Navbar() {
                       <span>Profile</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="hover:bg-white/10 focus:bg-white/10 hover:text-white focus:text-white data-highlighted:text-white not-data-[variant=destructive]:focus:**:text-white not-data-[variant=destructive]:hover:**:text-white focus:**:text-white hover:**:text-white data-highlighted:**:text-white cursor-pointer p-0">
-                    <Link href="/settings" className="flex items-center w-full px-2 py-1.5">
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </Link>
-                  </DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-white/10" />
                   <DropdownMenuItem onClick={logout} className="text-red-400 hover:bg-white/10 focus:bg-white/10 hover:text-red-400 focus:text-red-400 data-highlighted:text-red-400 not-data-[variant=destructive]:focus:**:text-red-400 not-data-[variant=destructive]:hover:**:text-red-400 focus:**:text-red-400 hover:**:text-red-400 data-highlighted:**:text-red-400 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
@@ -193,12 +187,6 @@ export function Navbar() {
                       <Button variant="ghost" className="w-full justify-start text-gray-300 hover:text-white hover:bg-white/10 text-lg">
                         <UserIcon className="mr-3 h-5 w-5" />
                         Profile
-                      </Button>
-                    </Link>
-                    <Link href="/settings" className="w-full">
-                      <Button variant="ghost" className="w-full justify-start text-gray-300 hover:text-white hover:bg-white/10 text-lg">
-                        <Settings className="mr-3 h-5 w-5" />
-                        Settings
                       </Button>
                     </Link>
                     <Button onClick={logout} variant="ghost" className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-white/10 text-lg">

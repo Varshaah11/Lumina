@@ -42,15 +42,7 @@ export function detectIntent(rawText: string, hasDocument: boolean = false): Int
     };
   }
 
-  if (/(open|show|go to) (my )?settings|^settings$/i.test(text)) {
-    return {
-      intent: "NAVIGATION",
-      navTarget: "/settings",
-      feedbackText: "✓ Opening Settings",
-    };
-  }
-
-  if (/(open|show|go to) (my )?profile|^profile$/i.test(text)) {
+  if (/(open|show|go to) (my )?(settings|profile)|^settings$|^profile$/i.test(text)) {
     return {
       intent: "NAVIGATION",
       navTarget: "/profile",

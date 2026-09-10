@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
-  User as UserIcon,
   Mail,
   MapPin,
   Lock,
@@ -17,6 +17,9 @@ import {
   Loader2,
   Check,
   Calendar,
+  Shield,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 interface ProfileState {
@@ -24,6 +27,28 @@ interface ProfileState {
   location: string;
   bio: string;
 }
+
+const getInitialProfile = (
+  user?: { id?: string | number; email?: string; name?: string } | null
+): ProfileState => {
+  let savedProfile: Partial<ProfileState> = {};
+  if (typeof window !== "undefined" && user) {
+    const storageKey = `lumina_profile_${user.id || user.email || "default"}`;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        savedProfile = JSON.parse(stored);
+      }
+    } catch {
+      // Ignore localStorage parse errors
+    }
+  }
+  return {
+    name: savedProfile.name !== undefined ? savedProfile.name : user?.name || "",
+    location: savedProfile.location || "",
+    bio: savedProfile.bio || "",
+  };
+};
 
 export default function ProfilePage() {
   const { user, isLoading } = useAuth();
@@ -33,46 +58,19 @@ export default function ProfilePage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<ProfileState>({
-    name: "",
-    location: "",
-    bio: "",
-  });
+  const [profile, setProfile] = useState<ProfileState>(() => getInitialProfile(user));
+  const [formData, setFormData] = useState<ProfileState>(() => getInitialProfile(user));
+  const [prevUserId, setPrevUserId] = useState<string | number | undefined>(user?.id);
 
-  const [formData, setFormData] = useState<ProfileState>({
-    name: "",
-    location: "",
-    bio: "",
-  });
+  if (user && user.id !== prevUserId) {
+    setPrevUserId(user.id);
+    const resolved = getInitialProfile(user);
+    setProfile(resolved);
+    setFormData(resolved);
+  }
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const successTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize and synchronize profile values from auth user & localStorage
-  useEffect(() => {
-    if (!user) return;
-
-    const storageKey = `lumina_profile_${user.id || user.email || "default"}`;
-    let savedProfile: Partial<ProfileState> = {};
-
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        savedProfile = JSON.parse(stored);
-      }
-    } catch {
-      // Ignore localStorage parse errors
-    }
-
-    const resolvedState: ProfileState = {
-      name: savedProfile.name !== undefined ? savedProfile.name : user.name || "",
-      location: savedProfile.location || "",
-      bio: savedProfile.bio || "",
-    };
-
-    setProfile(resolvedState);
-    setFormData(resolvedState);
-  }, [user]);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -92,6 +90,19 @@ export default function ProfilePage() {
     }
   }, [isEditing]);
 
+  const handleCancel = useCallback(() => {
+    setFormData(profile);
+    setErrorMessage(null);
+    setIsEditing(false);
+  }, [profile]);
+
+  const handleEnterEdit = () => {
+    setFormData(profile);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsEditing(true);
+  };
+
   // Handle keyboard Escape to cancel editing
   useEffect(() => {
     if (!isEditing) return;
@@ -104,20 +115,7 @@ export default function ProfilePage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isEditing, isSaving, profile]);
-
-  const handleEnterEdit = () => {
-    setFormData(profile);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setIsEditing(true);
-  };
-
-  const handleCancel = () => {
-    setFormData(profile);
-    setErrorMessage(null);
-    setIsEditing(false);
-  };
+  }, [isEditing, isSaving, handleCancel]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,7 +181,7 @@ export default function ProfilePage() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto pb-12 w-full">
+      <div className="max-w-4xl mx-auto pb-12 w-full space-y-6">
         {/* Page Header */}
         <PageHeader
           title="Profile"
@@ -493,6 +491,69 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* Data & Privacy Section */}
+        <section
+          aria-labelledby="privacy-heading"
+          className="bg-white/[0.02] border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl shadow-indigo-500/5 relative overflow-hidden transition-all"
+        >
+          {/* Ambient subtle glow */}
+          <div
+            className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-indigo-500/5 blur-[80px] pointer-events-none"
+            aria-hidden="true"
+          />
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-xl bg-white/5 text-indigo-400 border border-white/5 shrink-0">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 id="privacy-heading" className="text-base sm:text-lg font-semibold text-white tracking-tight">
+                Data & Privacy
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-400">
+                Manage how your conversations and uploaded documents are stored and processed.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-medium text-white">Conversation History & Documents</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Your chats and files are private to your account. You can review or delete prior conversations anytime.
+              </p>
+            </div>
+
+            <Link
+              href="/history"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/30 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 shrink-0 w-fit active:scale-95"
+            >
+              <span>Manage Chat History</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </section>
+
+        {/* About Lumina (Compact informational footer row) */}
+        <footer
+          aria-label="About Lumina"
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-5 rounded-2xl border border-white/5 bg-white/[0.015] backdrop-blur-md text-xs sm:text-sm text-gray-400"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shrink-0 shadow-sm">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
+            </div>
+            <div>
+              <span className="font-semibold text-white">Lumina</span>
+              <span className="mx-2 text-zinc-600">·</span>
+              <span className="text-zinc-400 text-xs">v1.0.0 (Beta)</span>
+            </div>
+          </div>
+          <p className="text-zinc-500 text-xs">
+            Intelligent AI workspace designed for professionals.
+          </p>
+        </footer>
       </div>
     </DashboardLayout>
   );

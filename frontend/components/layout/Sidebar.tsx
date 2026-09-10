@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   MessageSquarePlus,
   History,
-  Settings,
   LogOut,
   Sparkles,
   ChevronLeft,
@@ -212,7 +211,6 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
 
   const bottomItems = [
     { name: "Profile", href: "/profile", icon: UserIcon },
-    { name: "Settings", href: "/settings", icon: Settings },
   ];
 
   return (

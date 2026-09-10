@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { Menu, Sparkles, LogOut, User as UserIcon, LayoutDashboard, MessageSquarePlus, History, Settings } from "lucide-react";
+import { Menu, Sparkles, LogOut, User as UserIcon, LayoutDashboard, MessageSquarePlus, History } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -28,7 +28,6 @@ export function Topbar() {
     { name: "New Chat", href: "/chat", icon: MessageSquarePlus },
     { name: "Chat History", href: "/history", icon: History },
     { name: "Profile", href: "/profile", icon: UserIcon },
-    { name: "Settings", href: "/settings", icon: Settings },
   ];
 
   return (
