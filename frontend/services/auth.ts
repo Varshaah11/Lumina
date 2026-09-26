@@ -23,7 +23,10 @@ export interface User {
   id: string | number;
   email: string;
   name?: string;
+  location?: string | null;
+  bio?: string | null;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface TokenResponse {
@@ -57,6 +60,19 @@ export const authService = {
   async getMe(): Promise<User> {
     return api<User>("/auth/me", {
       method: "GET",
+    });
+  },
+
+  async getProfile(): Promise<User> {
+    return api<User>("/auth/profile", {
+      method: "GET",
+    });
+  },
+
+  async updateProfile(data: { name?: string; location?: string | null; bio?: string | null }): Promise<User> {
+    return api<User>("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
     });
   },
 };

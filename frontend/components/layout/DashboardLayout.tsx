@@ -54,7 +54,13 @@ export function DashboardLayout({ children, noScroll = false }: DashboardLayoutP
               : "overflow-y-auto p-4 sm:p-6 md:p-8"
           }`}
         >
-          <div className="max-w-6xl mx-auto w-full min-h-full">
+          <div
+            className={
+              noScroll
+                ? "max-w-6xl mx-auto w-full h-full flex flex-col"
+                : "max-w-6xl mx-auto w-full min-h-full"
+            }
+          >
             {children}
           </div>
         </main>

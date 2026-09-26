@@ -12,6 +12,8 @@ interface AuthContextType {
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
+  updateUser: (updatedUser: User) => void;
+  refreshUser: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +22,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const refreshUser = async () => {
+    try {
+      const userData = await authService.getMe();
+      setUser(userData);
+    } catch {
+      // Ignore refresh errors
+    }
+  };
+
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+  };
 
   // Load token and fetch user on initial mount
   useEffect(() => {
@@ -79,6 +94,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         login,
         register,
         logout,
+        updateUser,
+        refreshUser,
       }}
     >
       {children}

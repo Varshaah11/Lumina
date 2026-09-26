@@ -22,36 +22,24 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+import { authService, User } from "@/services/auth";
+
 interface ProfileState {
   name: string;
   location: string;
   bio: string;
 }
 
-const getInitialProfile = (
-  user?: { id?: string | number; email?: string; name?: string } | null
-): ProfileState => {
-  let savedProfile: Partial<ProfileState> = {};
-  if (typeof window !== "undefined" && user) {
-    const storageKey = `lumina_profile_${user.id || user.email || "default"}`;
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        savedProfile = JSON.parse(stored);
-      }
-    } catch {
-      // Ignore localStorage parse errors
-    }
-  }
+const getInitialProfile = (user?: User | null): ProfileState => {
   return {
-    name: savedProfile.name !== undefined ? savedProfile.name : user?.name || "",
-    location: savedProfile.location || "",
-    bio: savedProfile.bio || "",
+    name: user?.name || "",
+    location: user?.location || "",
+    bio: user?.bio || "",
   };
 };
 
 export default function ProfilePage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, updateUser } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,14 +48,15 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<ProfileState>(() => getInitialProfile(user));
   const [formData, setFormData] = useState<ProfileState>(() => getInitialProfile(user));
-  const [prevUserId, setPrevUserId] = useState<string | number | undefined>(user?.id);
 
-  if (user && user.id !== prevUserId) {
-    setPrevUserId(user.id);
-    const resolved = getInitialProfile(user);
-    setProfile(resolved);
-    setFormData(resolved);
-  }
+  // Sync profile and form data whenever user object changes from backend
+  useEffect(() => {
+    if (user) {
+      const resolved = getInitialProfile(user);
+      setProfile(resolved);
+      setFormData(resolved);
+    }
+  }, [user]);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const successTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -132,21 +121,24 @@ export default function ProfilePage() {
     setErrorMessage(null);
 
     try {
-      // Simulate asynchronous state persist
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      const updatedProfile: ProfileState = {
+      const updatedUser = await authService.updateProfile({
         name: trimmedName,
-        location: formData.location.trim(),
-        bio: formData.bio.trim(),
-      };
+        location: formData.location.trim() || null,
+        bio: formData.bio.trim() || null,
+      });
 
-      if (user) {
-        const storageKey = `lumina_profile_${user.id || user.email || "default"}`;
-        localStorage.setItem(storageKey, JSON.stringify(updatedProfile));
+      if (updateUser) {
+        updateUser(updatedUser);
       }
 
+      const updatedProfile: ProfileState = {
+        name: updatedUser.name || trimmedName,
+        location: updatedUser.location || "",
+        bio: updatedUser.bio || "",
+      };
+
       setProfile(updatedProfile);
+      setFormData(updatedProfile);
       setIsEditing(false);
 
       setSuccessMessage("Profile changes saved successfully.");
@@ -156,8 +148,8 @@ export default function ProfilePage() {
       successTimerRef.current = setTimeout(() => {
         setSuccessMessage(null);
       }, 4000);
-    } catch {
-      setErrorMessage("Failed to save profile changes. Please try again.");
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to save profile changes. Please try again.");
     } finally {
       setIsSaving(false);
     }

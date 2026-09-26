@@ -13,7 +13,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, default=None)
+    bio: Mapped[Optional[str]] = mapped_column(String, nullable=True, default=None)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     chats: Mapped[List["Chat"]] = relationship("Chat", back_populates="owner", cascade="all, delete-orphan")
+    documents: Mapped[List["Document"]] = relationship("Document", back_populates="owner", cascade="all, delete-orphan")

@@ -24,6 +24,7 @@ interface FailedRequest {
   content?: string;
   file?: File | null;
   docContext?: string | null;
+  documentId?: number | null;
   userVisibleContent?: string;
   isVoice?: boolean;
   messageId?: string;
@@ -174,6 +175,7 @@ export function useChat() {
 
     let userPromptText = content.trim();
     let docContext: string | null = null;
+    let uploadedDocId: number | null = null;
     let userVisibleContent = userPromptText;
 
     // Track request details for retry support
@@ -194,7 +196,8 @@ export function useChat() {
       const targetChatId = currentChatIdRef.current;
 
       try {
-        const uploadResult = await chatService.uploadFile(file, uploadController.signal);
+        const uploadResult = await chatService.uploadFile(file, uploadController.signal, targetChatId);
+        uploadedDocId = uploadResult.id || null;
 
         // Discard result if upload was aborted or if user switched chats / started new chat during upload
         if (
@@ -217,6 +220,7 @@ export function useChat() {
 
         if (lastFailedRequestRef.current) {
           lastFailedRequestRef.current.docContext = docContext;
+          lastFailedRequestRef.current.documentId = uploadedDocId;
           lastFailedRequestRef.current.userVisibleContent = userVisibleContent;
         }
       } catch (err: any) {
@@ -361,7 +365,8 @@ export function useChat() {
         }
       },
       docContext,
-      isVoice
+      isVoice,
+      uploadedDocId
     );
   };
 
@@ -476,7 +481,7 @@ export function useChat() {
     }
 
     if (failedReq?.type === "send") {
-      const { content = "", file, docContext, userVisibleContent, isVoice } = failedReq;
+      const { content = "", file, docContext, documentId, userVisibleContent, isVoice } = failedReq;
 
       // If a file was attached, but failed before upload/extraction completed, re-run full send
       if (file && !docContext) {
@@ -553,7 +558,8 @@ export function useChat() {
             }
           },
           docContext,
-          isVoice
+          isVoice,
+          documentId
         );
         return;
       }

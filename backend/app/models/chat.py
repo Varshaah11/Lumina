@@ -8,6 +8,7 @@ from app.database.database import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.message import Message
+    from app.models.document import Document
 
 class Chat(Base):
     __tablename__ = "chats"
@@ -21,3 +22,4 @@ class Chat(Base):
 
     owner: Mapped["User"] = relationship("User", back_populates="chats")
     messages: Mapped[List["Message"]] = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
+    documents: Mapped[List["Document"]] = relationship("Document", back_populates="chat", cascade="all, delete-orphan")

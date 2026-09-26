@@ -60,37 +60,64 @@ export function detectIntent(rawText: string, hasDocument: boolean = false): Int
 
   // 2. Document-Specific Action Intents
   if (/quiz me|start quiz|test me|ask me questions|create a quiz/i.test(text)) {
+    // Preserve natural user parameters (e.g., "Quiz me on chapter 3 with 10 questions")
+    // If the user's prompt already contains specific instructions/parameters, preserve it.
+    // Otherwise fallback to standard single-question prompt.
+    const hasCustomParameters =
+      /\d+\s*(questions|qs)|chapter|topic|level|hard|easy|medium|multiple choice|mcq/i.test(rawText);
+    const formattedPrompt = hasCustomParameters
+      ? `${rawText.trim()} Ask one question at a time and wait for my answer.`
+      : "Quiz me on this document with 5 questions. Ask one question at a time.";
+
     return {
       intent: "QUIZ",
       feedbackText: "🎯 Starting Quiz",
-      formattedPrompt: "Quiz me on this document with 5 questions. Ask one question at a time.",
+      formattedPrompt,
       requiresDocument: true,
     };
   }
 
   if (/study notes|make notes|create notes|exam notes/i.test(text)) {
+    const hasCustomParameters =
+      /chapter|section|topic|bullet|concise|detailed|in-depth|summary/i.test(rawText);
+    const formattedPrompt = hasCustomParameters
+      ? `${rawText.trim()}`
+      : "Create exam-ready study notes from this document.";
+
     return {
       intent: "NOTES",
       feedbackText: "📝 Creating Study Notes",
-      formattedPrompt: "Create exam-ready study notes from this document.",
+      formattedPrompt,
       requiresDocument: true,
     };
   }
 
   if (/summarize|key points|give me a summary|summary of this/i.test(text)) {
+    const hasCustomParameters =
+      /\d+\s*(points|bullets|paragraphs|words|sentences)|chapter|short|detailed/i.test(rawText);
+    const formattedPrompt = hasCustomParameters
+      ? `${rawText.trim()}`
+      : "Summarize this document in 5 key points.";
+
     return {
       intent: "SUMMARIZE",
       feedbackText: "📄 Summarizing Document",
-      formattedPrompt: "Summarize this document in 5 key points.",
+      formattedPrompt,
       requiresDocument: true,
     };
   }
 
   if (/explain this document|explain the file|explain the contents/i.test(text)) {
+    const hasCustomParameters =
+      /beginner|expert|simple|child|detail|briefly|section|chapter/i.test(rawText);
+    const formattedPrompt = hasCustomParameters
+      ? `${rawText.trim()}`
+      : "Explain the contents of this document like I am a beginner.";
+
     return {
       intent: "EXPLAIN",
       feedbackText: "💡 Explaining Content",
-      formattedPrompt: "Explain the contents of this document like I am a beginner.",
+      formattedPrompt,
       requiresDocument: true,
     };
   }
@@ -103,12 +130,12 @@ export function detectIntent(rawText: string, hasDocument: boolean = false): Int
     };
   }
 
-  // 3. Settings Intent
-  if (/change theme|toggle dark mode|notifications/i.test(text)) {
+  // 3. Settings Intent (Route to /profile as Lumina settings reside under Profile)
+  if (/change theme|toggle dark mode|notifications|settings/i.test(text)) {
     return {
       intent: "SETTINGS",
-      navTarget: "/settings",
-      feedbackText: "⚙️ Adjusting Settings",
+      navTarget: "/profile",
+      feedbackText: "⚙️ Opening Profile & Settings",
     };
   }
 

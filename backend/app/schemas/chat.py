@@ -6,6 +6,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="The message from the user to the AI.")
     chat_id: Optional[int] = Field(None, description="The ID of the chat session, if continuing an existing one.")
     doc_context: Optional[str] = Field(None, description="Optional extracted document content context.")
+    document_id: Optional[int] = Field(None, description="Optional ID of uploaded document associated with this request.")
     is_voice: Optional[bool] = Field(False, description="Whether this request is from voice mode.")
 
 class ChatRenameRequest(BaseModel):

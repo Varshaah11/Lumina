@@ -1,12 +1,14 @@
-import io
+import asyncio
 import os
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
 from app.schemas.user import UserResponse
-from app.api.dependencies import get_current_user
-import pypdf
-import docx
+from app.api.dependencies import get_current_user, get_db
+from app.services.rag_service import rag_service
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +18,12 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 class FileUploadResponse(BaseModel):
+    id: int
     filename: str
     file_type: str
     extracted_text: str
     character_count: int
+    chunk_count: int
 
 def get_file_extension(filename: str) -> str:
     _, ext = os.path.splitext(filename or "")
@@ -29,10 +33,13 @@ def get_file_extension(filename: str) -> str:
 @router.post("/", response_model=FileUploadResponse)
 async def upload_file_endpoint(
     file: UploadFile = File(...),
-    current_user: UserResponse = Depends(get_current_user)
+    chat_id: Optional[int] = Form(None),
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
-    Upload a document (PDF, DOCX, TXT, Markdown) and extract its text content.
+    Upload a document (PDF, DOCX, TXT, Markdown), parse off-thread,
+    chunk, generate embeddings, and persist in SQLite RAG store.
     Requires authentication. Max file size: 10 MB.
     """
     if not file or not file.filename:
@@ -64,49 +71,45 @@ async def upload_file_endpoint(
             detail=f"File size ({len(file_bytes) / (1024 * 1024):.2f} MB) exceeds maximum 10 MB limit"
         )
 
-    extracted_text = ""
-    file_type = ext.lstrip(".")
-    if file_type == "md":
-        file_type = "markdown"
-
+    # Process and store document using RAG service (extraction runs off-thread)
     try:
-        if ext == ".pdf":
-            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
-            page_texts = []
-            for i, page in enumerate(reader.pages):
-                text = page.extract_text()
-                if text:
-                    page_texts.append(text)
-            extracted_text = "\n\n".join(page_texts)
+        # Offload CPU-heavy parsing and store in DB with embeddings
+        doc = await asyncio.to_thread(
+            # First extract and validate off-thread
+            rag_service.extract_document_sync,
+            file_bytes,
+            file.filename
+        )
+        full_text, pages = doc
+        if not full_text.strip():
+            raise ValueError("Document appears to be empty or contains no readable text")
 
-        elif ext == ".docx":
-            doc = docx.Document(io.BytesIO(file_bytes))
-            paragraph_texts = [p.text for p in doc.paragraphs if p.text.strip()]
-            extracted_text = "\n".join(paragraph_texts)
-
-        elif ext in {".txt", ".md"}:
-            try:
-                extracted_text = file_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                extracted_text = file_bytes.decode("latin-1", errors="replace")
-
-    except Exception as e:
-        logger.error(f"Error extracting text from {file.filename}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Could not extract text from document: {str(e)}"
+        stored_doc = await rag_service.process_and_store_document(
+            file_bytes=file_bytes,
+            filename=file.filename,
+            user_id=current_user.id,
+            chat_id=chat_id,
+            db=db
         )
 
-    extracted_text = extracted_text.strip()
-    if not extracted_text:
+    except ValueError as e:
+        logger.warning(f"Validation error processing document {file.filename}: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Document appears to be empty or contains no readable text"
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error processing document {file.filename}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not extract or process document: {str(e)}"
         )
 
     return FileUploadResponse(
-        filename=file.filename,
-        file_type=file_type,
-        extracted_text=extracted_text,
-        character_count=len(extracted_text)
+        id=stored_doc.id,
+        filename=stored_doc.filename,
+        file_type=stored_doc.file_type,
+        extracted_text=full_text,
+        character_count=len(full_text),
+        chunk_count=len(stored_doc.chunks)
     )

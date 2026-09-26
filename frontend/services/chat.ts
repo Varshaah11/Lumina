@@ -89,17 +89,22 @@ function handleSSEStream(
 }
 
 export interface UploadFileResponse {
+  id?: number;
   filename: string;
   file_type: string;
   extracted_text: string;
   character_count: number;
+  chunk_count?: number;
 }
 
 export const chatService = {
-  uploadFile: async (file: File, signal?: AbortSignal): Promise<UploadFileResponse> => {
+  uploadFile: async (file: File, signal?: AbortSignal, chatId?: string | null): Promise<UploadFileResponse> => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const formData = new FormData();
     formData.append("file", file);
+    if (chatId) {
+      formData.append("chat_id", chatId);
+    }
 
     const token = Cookies.get("token");
     const headers: HeadersInit = {};
@@ -142,7 +147,8 @@ export const chatService = {
     onError: (error: string) => void,
     onComplete: () => void,
     docContext?: string | null,
-    isVoice?: boolean
+    isVoice?: boolean,
+    documentId?: number | null
   ): AbortController => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const payload: any = { message };
@@ -151,6 +157,9 @@ export const chatService = {
     }
     if (docContext) {
       payload.doc_context = docContext;
+    }
+    if (documentId) {
+      payload.document_id = documentId;
     }
     if (isVoice) {
       payload.is_voice = true;

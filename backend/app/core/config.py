@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_NUM_CTX: int = 8192
+    EMBEDDING_MODEL: str = "nomic-embed-text"
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
