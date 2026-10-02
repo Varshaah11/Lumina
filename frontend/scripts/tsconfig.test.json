@@ -11,7 +11,9 @@
   },
   "include": [
     "test_mic_privacy.ts",
-    "test_code_quality.ts"
+    "test_code_quality.ts",
+    "test_voice_hook.ts",
+    "test_voice_modules.ts"
   ],
   "exclude": [
     "../node_modules"

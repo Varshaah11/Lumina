@@ -38,7 +38,10 @@ export class FakeRecognition {
   startCalls = 0;
   abortCalls = 0;
   stopCalls = 0;
+  /** Where the hook created/started this recognizer (debug aid for failing tests). */
+  origin = "";
   constructor() {
+    this.origin = new Error().stack?.split("\n").slice(2, 9).map((l) => l.trim().replace(/\(.*[\\/](hooks|scripts)[\\/]/, "(")).join(" <- ") ?? "";
     FakeRecognition.instances.push(this);
   }
   start() { this.startCalls++; }
@@ -49,6 +52,11 @@ export class FakeRecognition {
   /** Simulates the browser ending the session by itself (silence timeout, network hiccup...). */
   fireEnd() { this.onend?.(); }
   fireError(error: string) { this.onerror?.({ error }); }
+  /** Simulates recognition results; each item is one result entry (interim or final), in order. */
+  fireResult(items: { transcript: string; isFinal: boolean }[]) {
+    const results = items.map((i) => Object.assign([{ transcript: i.transcript, confidence: 1 }], { isFinal: i.isFinal }));
+    this.onresult?.({ results });
+  }
   get released() { return this.abortCalls > 0 || this.stopCalls > 0; }
 }
 
