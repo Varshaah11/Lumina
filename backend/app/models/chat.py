@@ -4,6 +4,7 @@ from sqlalchemy import String, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.database.database import Base
+from app.models.document import chat_documents
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -21,5 +22,5 @@ class Chat(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     owner: Mapped["User"] = relationship("User", back_populates="chats")
-    messages: Mapped[List["Message"]] = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
-    documents: Mapped[List["Document"]] = relationship("Document", back_populates="chat", cascade="all, delete-orphan")
+    messages: Mapped[List["Message"]] = relationship("Message", back_populates="chat", cascade="all, delete-orphan", order_by="Message.id")
+    documents: Mapped[List["Document"]] = relationship("Document", secondary=chat_documents, back_populates="chats")

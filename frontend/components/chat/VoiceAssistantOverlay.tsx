@@ -22,6 +22,7 @@ interface VoiceAssistantOverlayProps {
   hasDocument?: boolean;
   enableWakeWord?: boolean;
   onOpenVoiceMode?: () => void;
+  onMicActiveChange?: (active: boolean) => void;
 }
 
 export function VoiceAssistantOverlay({
@@ -34,6 +35,7 @@ export function VoiceAssistantOverlay({
   hasDocument = false,
   enableWakeWord = false,
   onOpenVoiceMode,
+  onMicActiveChange,
 }: VoiceAssistantOverlayProps) {
   const {
     voiceState,
@@ -55,6 +57,7 @@ export function VoiceAssistantOverlay({
     hasDocument,
     enableWakeWord,
     onOpenVoiceMode,
+    onMicActiveChange,
   });
 
   const handleExit = useCallback(() => {

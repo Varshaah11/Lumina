@@ -1,5 +1,3 @@
-import Cookies from "js-cookie";
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
@@ -11,8 +9,6 @@ export class ApiError extends Error {
 
 export const api = async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = Cookies.get("token");
-
   const headers = new Headers(options.headers || {});
   
   if (!headers.has("Content-Type") && !(options.body instanceof URLSearchParams)) {
@@ -21,13 +17,11 @@ export const api = async <T>(endpoint: string, options: RequestInit = {}): Promi
     headers.set("Content-Type", "application/x-www-form-urlencoded");
   }
 
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
+  // Auth is carried by the HttpOnly cookie the backend sets; JS never sees or sends the JWT itself
   const response = await fetch(url, {
     ...options,
     headers,
+    credentials: "include",
   });
 
   let data;

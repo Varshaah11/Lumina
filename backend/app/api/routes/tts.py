@@ -5,7 +5,8 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app.schemas.user import UserResponse
 from app.api.dependencies import get_current_user
-from app.ai.tts import tts_service
+from app.core.config import settings
+from app.ai.tts import tts_service, TTSBusyError, TTSUnavailableError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,16 +27,25 @@ async def generate_tts(
     """
     start_time = time.perf_counter()
 
-    if not tts_service.is_loaded:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Kokoro TTS service is unavailable on the server"
-        )
-
+    # Validate input first: nothing below (availability check, worker pool, inference) runs for bad input
     if not request.text.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Text cannot be empty"
+        )
+
+    max_length = settings.KOKORO_MAX_TEXT_LENGTH
+    if len(request.text) > max_length:
+        logger.warning(f"[TTS Route] Rejected oversized input: {len(request.text)} chars (max {max_length})")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Text is too long (maximum {max_length} characters)"
+        )
+
+    if not tts_service.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TTS is currently unavailable"
         )
 
     if await raw_request.is_disconnected():
@@ -45,16 +55,34 @@ async def generate_tts(
             detail="Client disconnected before TTS generation"
         )
 
+    # Client-facing messages are fixed strings; the real exception goes to the server log only
     try:
         wav_bytes = await run_in_threadpool(tts_service.generate_speech, request.text, voice="af_sarah")
         elapsed = time.perf_counter() - start_time
         logger.info(f"[TTS Route] Successfully generated {len(wav_bytes)} bytes WAV in {elapsed:.4f}s")
         return Response(content=wav_bytes, media_type="audio/wav")
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        logger.warning(f"[TTS Route] Invalid TTS input: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text contains nothing that can be spoken"
+        )
+    except TTSBusyError as e:
+        logger.warning(f"[TTS Route] {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TTS is busy, please retry shortly",
+            headers={"Retry-After": "2"},
+        )
+    except TTSUnavailableError as e:
+        logger.error(f"[TTS Route] TTS unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TTS is currently unavailable"
+        )
     except Exception as e:
-        logger.error(f"[TTS Route Error] {e}")
+        logger.error(f"[TTS Route Error] {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"TTS generation failed: {str(e)}"
+            detail="Speech synthesis failed"
         )

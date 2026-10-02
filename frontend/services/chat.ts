@@ -1,6 +1,5 @@
 import { api } from "./api";
 import { ChatSession } from "@/hooks/useChat";
-import Cookies from "js-cookie";
 
 function handleSSEStream(
   url: string,
@@ -13,17 +12,14 @@ function handleSSEStream(
   const controller = new AbortController();
   let hasCalledError = false;
 
-  const token = Cookies.get("token");
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
 
   fetch(url, {
     method: "POST",
     headers,
+    credentials: "include",
     body: JSON.stringify(payload),
     signal: controller.signal,
   }).then(async (response) => {
@@ -92,7 +88,6 @@ export interface UploadFileResponse {
   id?: number;
   filename: string;
   file_type: string;
-  extracted_text: string;
   character_count: number;
   chunk_count?: number;
 }
@@ -106,15 +101,9 @@ export const chatService = {
       formData.append("chat_id", chatId);
     }
 
-    const token = Cookies.get("token");
-    const headers: HeadersInit = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const res = await fetch(`${API_BASE_URL}/upload`, {
       method: "POST",
-      headers,
+      credentials: "include",
       body: formData,
       signal,
     });
@@ -146,7 +135,6 @@ export const chatService = {
     onChatIdReceived: (id: string) => void,
     onError: (error: string) => void,
     onComplete: () => void,
-    docContext?: string | null,
     isVoice?: boolean,
     documentId?: number | null
   ): AbortController => {
@@ -154,9 +142,6 @@ export const chatService = {
     const payload: any = { message };
     if (chatId) {
       payload.chat_id = parseInt(chatId, 10);
-    }
-    if (docContext) {
-      payload.doc_context = docContext;
     }
     if (documentId) {
       payload.document_id = documentId;
@@ -178,12 +163,13 @@ export const chatService = {
     chatId: string,
     onChunk: (text: string) => void,
     onError: (error: string) => void,
-    onComplete: () => void
+    onComplete: () => void,
+    isVoice: boolean = false
   ): AbortController => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     return handleSSEStream(
       `${API_BASE_URL}/chat/${chatId}/regenerate`,
-      {},
+      { is_voice: isVoice },
       onChunk,
       () => {},
       onError,

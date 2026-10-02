@@ -1,6 +1,5 @@
-import asyncio
-import os
 import logging
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from pydantic import BaseModel
@@ -8,26 +7,19 @@ from sqlalchemy.orm import Session
 
 from app.schemas.user import UserResponse
 from app.api.dependencies import get_current_user, get_db
-from app.services.rag_service import rag_service
+from app.services.rag_service import rag_service, DocumentContentError
+from app.services import upload_validation as uv
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
-
 class FileUploadResponse(BaseModel):
     id: int
     filename: str
     file_type: str
-    extracted_text: str
     character_count: int
     chunk_count: int
-
-def get_file_extension(filename: str) -> str:
-    _, ext = os.path.splitext(filename or "")
-    return ext.lower()
 
 @router.post("", response_model=FileUploadResponse)
 @router.post("/", response_model=FileUploadResponse)
@@ -40,76 +32,43 @@ async def upload_file_endpoint(
     """
     Upload a document (PDF, DOCX, TXT, Markdown), parse off-thread,
     chunk, generate embeddings, and persist in SQLite RAG store.
-    Requires authentication. Max file size: 10 MB.
+    Requires authentication. Size limit: MAX_UPLOAD_SIZE_MB.
+
+    Everything up to process_and_store_document is cheap validation that runs before any extraction,
+    chunking, embedding or database write. File name and Content-Type are hints only; the bytes must match the type.
     """
-    if not file or not file.filename:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No file provided"
-        )
-
-    ext = get_file_extension(file.filename)
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type '{ext}'. Allowed types: PDF, DOCX, TXT, MD"
-        )
-
-    # Read bytes and validate size
     try:
-        file_bytes = await file.read()
-    except Exception as e:
-        logger.error(f"Error reading uploaded file: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to read uploaded file"
-        )
+        filename = uv.sanitize_filename(file.filename)      # also strips any directory components
+        ext = uv.get_extension(filename)
+        data = await uv.read_upload_bounded(file, ext)      # size-capped read + signature check on the first chunk
+        await asyncio.to_thread(uv.check_full_content, ext, data)
+    except uv.UploadRejected as rejected:
+        logger.warning(f"Upload rejected ({rejected.status_code}): {rejected.message} [name={file.filename!r}, content_type={file.content_type!r}]")
+        raise HTTPException(status_code=rejected.status_code, detail=rejected.message)
 
-    if len(file_bytes) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File size ({len(file_bytes) / (1024 * 1024):.2f} MB) exceeds maximum 10 MB limit"
-        )
-
-    # Process and store document using RAG service (extraction runs off-thread)
+    # Extraction/chunking runs once, off the event loop, inside the RAG service
     try:
-        # Offload CPU-heavy parsing and store in DB with embeddings
-        doc = await asyncio.to_thread(
-            # First extract and validate off-thread
-            rag_service.extract_document_sync,
-            file_bytes,
-            file.filename
-        )
-        full_text, pages = doc
-        if not full_text.strip():
-            raise ValueError("Document appears to be empty or contains no readable text")
-
         stored_doc = await rag_service.process_and_store_document(
-            file_bytes=file_bytes,
-            filename=file.filename,
+            file_bytes=data,
+            filename=filename,
             user_id=current_user.id,
             chat_id=chat_id,
             db=db
         )
-
-    except ValueError as e:
-        logger.warning(f"Validation error processing document {file.filename}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    except DocumentContentError as e:
+        logger.warning(f"Document {filename!r} could not be used: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        logger.error(f"Error processing document {file.filename}: {e}")
+        logger.error(f"Error processing document {filename!r}: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Could not extract or process document: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Document processing failed"
         )
 
     return FileUploadResponse(
         id=stored_doc.id,
         filename=stored_doc.filename,
         file_type=stored_doc.file_type,
-        extracted_text=full_text,
-        character_count=len(full_text),
+        character_count=stored_doc.char_count,
         chunk_count=len(stored_doc.chunks)
     )

@@ -6,3 +6,8 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: str | None = None
+
+class LoginResponse(BaseModel):
+    """Login result. The JWT itself is delivered only via the HttpOnly cookie, never in the body."""
+    message: str = "Login successful"
+    token_type: str = "cookie"

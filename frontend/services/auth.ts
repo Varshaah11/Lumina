@@ -29,18 +29,19 @@ export interface User {
   updated_at?: string;
 }
 
-export interface TokenResponse {
-  access_token: string;
+// The JWT is never returned to JS: the backend stores it in an HttpOnly cookie.
+export interface LoginResponse {
+  message: string;
   token_type: string;
 }
 
 export const authService = {
-  async login(data: LoginData): Promise<TokenResponse> {
+  async login(data: LoginData): Promise<LoginResponse> {
     const params = new URLSearchParams();
     params.append("username", data.email);
     params.append("password", data.password);
 
-    return api<TokenResponse>("/auth/login", {
+    return api<LoginResponse>("/auth/login", {
       method: "POST",
       body: params,
     });
@@ -55,6 +56,10 @@ export const authService = {
         name: data.name,
       }),
     });
+  },
+
+  async logout(): Promise<void> {
+    await api<unknown>("/auth/logout", { method: "POST" });
   },
 
   async getMe(): Promise<User> {

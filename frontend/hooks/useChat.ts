@@ -9,6 +9,7 @@ export interface Message {
   role: Role;
   content: string;
   timestamp: Date;
+  isVoice?: boolean;
 }
 
 export interface ChatSession {
@@ -23,11 +24,17 @@ interface FailedRequest {
   type: "send" | "regenerate";
   content?: string;
   file?: File | null;
-  docContext?: string | null;
   documentId?: number | null;
   userVisibleContent?: string;
   isVoice?: boolean;
   messageId?: string;
+}
+
+// The AI title is generated in the background after the stream closes, so refresh the sidebar list shortly after.
+function refreshChatListAfterTitle() {
+  [5000, 15000].forEach((delay) =>
+    setTimeout(() => window.dispatchEvent(new Event("chats-updated")), delay)
+  );
 }
 
 export function useChat() {
@@ -53,10 +60,8 @@ export function useChat() {
   }, [chatId]);
 
   useEffect(() => {
-    console.log("[useChat] useEffect(initialChatId) triggered", { initialChatId, loadedChatId: loadedChatIdRef.current, isLoading });
     if (isLoading) {
       if (isUploadingRef.current && initialChatId !== loadedChatIdRef.current) {
-        console.log("[useChat] Upload active and chat switched: aborting upload");
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
           abortControllerRef.current = null;
@@ -65,20 +70,17 @@ export function useChat() {
         setIsUploading(false);
         setIsLoading(false);
       } else {
-        console.log("[useChat] Skipping useEffect(initialChatId) because stream is currently active (isLoading = true)");
         return;
       }
     }
 
     if (initialChatId) {
       if (loadedChatIdRef.current === initialChatId) {
-        console.log("[useChat] Skipping getChatHistory because loadedChatIdRef matches initialChatId:", initialChatId);
         return;
       }
 
       // Abort any ongoing stream when switching to a different chat
       if (abortControllerRef.current) {
-        console.log("[useChat] Aborting ongoing stream due to initialChatId change");
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
@@ -88,10 +90,8 @@ export function useChat() {
       loadedChatIdRef.current = initialChatId;
       currentChatIdRef.current = initialChatId;
 
-      console.log("[useChat] Calling chatService.getChatHistory for chatId:", initialChatId);
       chatService.getChatHistory(initialChatId)
         .then((data) => {
-          console.log("[useChat][setMessages] Source: history load (getChatHistory resolved)", data?.messages?.length || 0, "messages");
           if (data && data.messages) {
             setMessages(data.messages.map((m: any) => ({
               id: m.id.toString(),
@@ -116,18 +116,15 @@ export function useChat() {
       }
       if (isLoading && currentChatIdRef.current && wasStreamingNewChatRef.current) return; // Protect active new chat stream from being wiped
       if (wasStreamingNewChatRef.current) {
-        console.log("[useChat] Protecting active new chat stream completion on /chat page");
         wasStreamingNewChatRef.current = false;
         return;
       }
 
       if (abortControllerRef.current) {
-        console.log("[useChat] Aborting stream on reset to new chat");
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
 
-      console.log("[useChat][setMessages] Source: reset to new chat");
       setChatId(null);
       setMessages([]);
       setIsLoading(false);
@@ -170,11 +167,9 @@ export function useChat() {
   }, []);
 
   const sendMessage = async (content: string, file?: File | null, isVoice: boolean = false) => {
-    console.log("[useChat] sendMessage() called with content:", content, "file:", file?.name, "isVoice:", isVoice);
     if ((!content.trim() && !file) || isLoading) return;
 
     let userPromptText = content.trim();
-    let docContext: string | null = null;
     let uploadedDocId: number | null = null;
     let userVisibleContent = userPromptText;
 
@@ -204,7 +199,6 @@ export function useChat() {
           uploadController.signal.aborted ||
           currentChatIdRef.current !== targetChatId
         ) {
-          console.log("[useChat] Upload finished but chat switched or was aborted. Discarding result.");
           if (abortControllerRef.current === uploadController) {
             abortControllerRef.current = null;
           }
@@ -214,12 +208,10 @@ export function useChat() {
           return;
         }
 
-        docContext = `[Attached Document: ${uploadResult.filename}]\nExtracted Content:\n"""\n${uploadResult.extracted_text}\n"""`;
         const promptPart = userPromptText || "Please analyze and summarize the contents of this document.";
         userVisibleContent = `📄 ${uploadResult.filename}\n\n${promptPart}`;
 
         if (lastFailedRequestRef.current) {
-          lastFailedRequestRef.current.docContext = docContext;
           lastFailedRequestRef.current.documentId = uploadedDocId;
           lastFailedRequestRef.current.userVisibleContent = userVisibleContent;
         }
@@ -230,7 +222,6 @@ export function useChat() {
           uploadController.signal.aborted ||
           currentChatIdRef.current !== targetChatId
         ) {
-          console.log("[useChat] File upload aborted or discarded after chat switch.");
           if (abortControllerRef.current === uploadController) {
             abortControllerRef.current = null;
           }
@@ -270,6 +261,7 @@ export function useChat() {
       role: "user",
       content: userVisibleContent,
       timestamp: new Date(),
+      isVoice,
     };
 
     const botMsgId = crypto.randomUUID();
@@ -278,9 +270,9 @@ export function useChat() {
       role: "assistant",
       content: "",
       timestamp: new Date(),
+      isVoice,
     };
 
-    console.log("[useChat][setMessages] Source: sendMessage (add userMsg & botMsg placeholder)");
     setMessages((prev) => [...prev, userMsg, botMsg]);
     setIsLoading(true);
 
@@ -293,35 +285,18 @@ export function useChat() {
       userVisibleContent,
       activeChatId,
       (textChunk) => {
-        console.log(
-          "[onChunk]",
-          JSON.stringify(textChunk),
-          "botMsgId:",
-          botMsgId
-        );
-
-        setMessages((prev) => {
-          console.log(
-            "[setMessages before]",
-            prev.map(m => ({
-              id: m.id,
-              role: m.role,
-              content: m.content
-            }))
-          );
-
-          return prev.map((msg) =>
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.id === botMsgId
               ? {
                 ...msg,
                 content: msg.content + textChunk,
               }
               : msg
-          );
-        });
+          )
+        );
       },
       (newChatId) => {
-        console.log("[useChat] onChatIdReceived() received newChatId:", newChatId, "activeChatId was:", activeChatId);
         if (!activeChatId) {
           setChatId(newChatId);
           loadedChatIdRef.current = newChatId;
@@ -330,7 +305,6 @@ export function useChat() {
       },
       (errorMsg) => {
         console.warn("[useChat] streamMessage error:", errorMsg);
-        console.log("[useChat][setMessages] Source: error");
         setMessages((prev) => {
           const lastMsg = prev[prev.length - 1];
           if (lastMsg && lastMsg.role === "error" && lastMsg.content === errorMsg) {
@@ -355,16 +329,15 @@ export function useChat() {
         }
       },
       () => {
-        console.log("[useChat] onComplete() streaming finished successfully");
         setIsLoading(false);
         lastFailedRequestRef.current = null;
         abortControllerRef.current = null;
         if (currentChatIdRef.current && !initialChatId) {
           window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
           window.dispatchEvent(new Event("chat-created"));
+          refreshChatListAfterTitle();
         }
       },
-      docContext,
       isVoice,
       uploadedDocId
     );
@@ -381,28 +354,34 @@ export function useChat() {
     }
   };
 
-  const regenerateResponse = (messageId: string) => {
-    console.log("[useChat] regenerateResponse() called for messageId:", messageId);
+  const regenerateResponse = (messageId: string, isVoiceParam?: boolean) => {
     if (isLoading) return;
 
     const activeChatId = currentChatIdRef.current;
     if (!activeChatId) return;
 
-    const targetMsg = messages.find((m) => m.id === messageId);
+    const targetIndex = messages.findIndex((m) => m.id === messageId);
+    const targetMsg = targetIndex !== -1 ? messages[targetIndex] : undefined;
     if (!targetMsg || targetMsg.role !== "assistant") return;
 
     const oldContent = targetMsg.content;
     const botMsgId = messageId;
 
+    const precedingUserMsg = targetIndex > 0 ? messages[targetIndex - 1] : undefined;
+    const isVoice = typeof isVoiceParam === "boolean"
+      ? isVoiceParam
+      : Boolean(targetMsg.isVoice ?? precedingUserMsg?.isVoice ?? false);
+
     lastFailedRequestRef.current = {
       type: "regenerate",
       messageId,
+      isVoice,
     };
 
     setMessages((prev) =>
       prev.map((msg) =>
         msg.id === messageId
-          ? { ...msg, content: "" }
+          ? { ...msg, content: "", isVoice }
           : msg
       )
     );
@@ -449,11 +428,11 @@ export function useChat() {
         abortControllerRef.current = null;
       },
       () => {
-        console.log("[useChat] regenerate onComplete()");
         setIsLoading(false);
         lastFailedRequestRef.current = null;
         abortControllerRef.current = null;
-      }
+      },
+      isVoice
     );
   };
 
@@ -476,15 +455,15 @@ export function useChat() {
     setMessages((prev) => prev.filter((m) => m.id !== errorMsgId));
 
     if (failedReq?.type === "regenerate" && failedReq.messageId) {
-      regenerateResponse(failedReq.messageId);
+      regenerateResponse(failedReq.messageId, failedReq.isVoice);
       return;
     }
 
     if (failedReq?.type === "send") {
-      const { content = "", file, docContext, documentId, userVisibleContent, isVoice } = failedReq;
+      const { content = "", file, documentId, userVisibleContent, isVoice } = failedReq;
 
       // If a file was attached, but failed before upload/extraction completed, re-run full send
-      if (file && !docContext) {
+      if (file && !documentId) {
         sendMessage(content, file, isVoice);
         return;
       }
@@ -555,9 +534,9 @@ export function useChat() {
             if (currentChatIdRef.current && !initialChatId) {
               window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
               window.dispatchEvent(new Event("chat-created"));
+              refreshChatListAfterTitle();
             }
           },
-          docContext,
           isVoice,
           documentId
         );

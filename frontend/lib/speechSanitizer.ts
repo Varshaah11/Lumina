@@ -44,7 +44,10 @@ export function sanitizeTextForTTS(rawText: string): string {
   text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => ` ${convertMathFactorials(math)} `);
   text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => ` ${convertMathFactorials(math)} `);
   text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => ` ${convertMathFactorials(math)} `);
-  text = text.replace(/\$([^$\n]+)\$/g, (_, math) => ` ${convertMathFactorials(math)} `);
+  // Inline $...$ is math only if the opening $ is followed by non-space, the closing $ is preceded by
+  // non-space and NOT followed by a digit. This keeps currency like "$5 and $10" or "$5-$10" intact
+  // (the backend TTS normalizer turns those into "5 dollars").
+  text = text.replace(/\$(?=[^\s$])([^$\n]*?[^\s$])\$(?!\d)/g, (_, math) => ` ${convertMathFactorials(math)} `);
 
   // Convert basic math symbols and expressions to spoken words
   text = text.replace(/\\times\b/g, " times ");

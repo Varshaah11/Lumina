@@ -3,7 +3,6 @@ import { useRouter } from "next/navigation";
 import { Message } from "@/hooks/useChat";
 import { detectIntent, IntentResult } from "@/lib/intentDetector";
 import { sanitizeTextForTTS, parseWakeWord, isInterruptionCommand } from "@/lib/speechSanitizer";
-import Cookies from "js-cookie";
 
 export type VoiceState = "IDLE" | "LISTENING" | "THINKING" | "SPEAKING" | "ACTION" | "ERROR";
 
@@ -30,7 +29,10 @@ interface UseVoiceConversationProps {
   messages: Message[];
   isOpen: boolean;
   hasDocument?: boolean;
+  /** Always-listening wake word. OFF unless the caller explicitly passes true after a user action. */
   enableWakeWord?: boolean;
+  /** Called whenever the speech recognizer (microphone) actually starts or stops capturing. */
+  onMicActiveChange?: (active: boolean) => void;
   onOpenVoiceMode?: () => void;
 }
 
@@ -137,8 +139,9 @@ export function useVoiceConversation({
   messages,
   isOpen,
   hasDocument = false,
-  enableWakeWord = true,
+  enableWakeWord = false,
   onOpenVoiceMode,
+  onMicActiveChange,
 }: UseVoiceConversationProps) {
   const router = useRouter();
   const [voiceState, setVoiceState] = useState<VoiceState>("IDLE");
@@ -146,6 +149,11 @@ export function useVoiceConversation({
   const [isLoopEnabled, setIsLoopEnabled] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [isMicActive, setIsMicActive] = useState(false);
+  const onMicActiveChangeRef = useRef(onMicActiveChange);
+  useEffect(() => {
+    onMicActiveChangeRef.current = onMicActiveChange;
+  });
 
   // Stable callback prop refs
   const onOpenVoiceModeRef = useRef(onOpenVoiceMode);
@@ -273,6 +281,7 @@ export function useVoiceConversation({
   // Stop STT recognition
   const stopSTT = useCallback(() => {
     console.log("[STT] Stopping SpeechRecognition");
+    setIsMicActive(false);
     isListeningRef.current = false;
     isStartingRef.current = false;
 
@@ -422,6 +431,7 @@ export function useVoiceConversation({
       recognition.onstart = () => {
         if (activeSessionIdRef.current !== sessionId) return;
         console.log(`[STT] recognition.onstart (sessionId=${sessionId}, isVoiceActive=${isVoiceActiveRef.current})`);
+        setIsMicActive(true);
         isListeningRef.current = true;
         isStartingRef.current = false;
         if (isVoiceActiveRef.current) {
@@ -559,6 +569,7 @@ export function useVoiceConversation({
           return;
         }
 
+        setIsMicActive(false);
         isListeningRef.current = false;
 
         // Auto-restart recognition based on active state
@@ -837,13 +848,12 @@ export function useVoiceConversation({
 
     try {
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const token = Cookies.get("token");
       const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
 
       const res = await fetch(`${API_BASE_URL}/tts`, {
         method: "POST",
         headers,
+        credentials: "include",
         body: JSON.stringify({ text }),
         signal: abortController.signal,
       });
@@ -1077,6 +1087,11 @@ export function useVoiceConversation({
   const prevIsOpenRef = useRef<boolean>(isOpen);
   const prevEnableWakeWordRef = useRef<boolean>(enableWakeWord);
 
+  // Report real microphone state (capturing or not) to the UI
+  useEffect(() => {
+    onMicActiveChangeRef.current?.(isMicActive);
+  }, [isMicActive]);
+
   // Clean up or transition between Voice Mode and Wake Word Mode
   useEffect(() => {
     isVoiceActiveRef.current = isOpen;
@@ -1158,14 +1173,13 @@ export function useVoiceConversation({
     console.log("=== MANUAL TEST TTS AUDIO PLAYBACK TRIGGERED ===");
     try {
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const token = Cookies.get("token");
       const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
 
       const testPrompt = "This is a direct test of Lumina Kokoro audio playback.";
       const res = await fetch(`${API_BASE_URL}/tts`, {
         method: "POST",
         headers,
+        credentials: "include",
         body: JSON.stringify({ text: testPrompt }),
       });
 
@@ -1228,6 +1242,7 @@ export function useVoiceConversation({
     isLoopEnabled,
     errorMessage,
     actionFeedback,
+    isMicActive,
     startListening,
     stopListening: stopSTT,
     handleStop,

@@ -1,8 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import StreamingResponse
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.schemas.chat import ChatRequest, ChatResponseDB, ChatHistoryResponseDB, ChatRenameRequest
+from app.schemas.chat import (
+    ChatRequest,
+    ChatResponseDB,
+    ChatHistoryResponseDB,
+    ChatRenameRequest,
+    RegenerateRequest
+)
 from app.schemas.user import UserResponse
 from app.services.chat_service import chat_service
 from app.api.dependencies import get_current_user, get_db
@@ -45,6 +51,7 @@ async def chat_stream_endpoint(
 @router.post("/{chat_id}/regenerate")
 async def regenerate_chat_endpoint(
     chat_id: int,
+    request: Optional[RegenerateRequest] = Body(None),
     current_user: UserResponse = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -52,7 +59,13 @@ async def regenerate_chat_endpoint(
     Regenerate the latest assistant response for a chat via SSE.
     Requires authentication.
     """
-    generator = chat_service.process_regenerate_stream(chat_id, current_user, db)
+    is_voice = request.is_voice if request else False
+    generator = chat_service.process_regenerate_stream(
+        chat_id=chat_id,
+        current_user=current_user,
+        db=db,
+        is_voice=is_voice
+    )
     return StreamingResponse(generator, media_type="text/event-stream")
 
 @router.delete("/{chat_id}")

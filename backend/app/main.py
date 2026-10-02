@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
+from app.core.body_limit import UploadBodyLimitMiddleware
+from app.core.cors import add_cors
 from app.core.logging import setup_logging
 from app.core.exceptions import (
     custom_http_exception_handler,
@@ -30,17 +31,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Early request-size limit for /upload. Added BEFORE CORS so CORS stays the outermost layer
+# and 413 responses still carry the CORS headers.
+app.add_middleware(UploadBodyLimitMiddleware)
+
 # CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+add_cors(app, settings.cors_origins)
 
 # Exception Handlers
 app.add_exception_handler(StarletteHTTPException, custom_http_exception_handler)

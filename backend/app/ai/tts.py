@@ -9,8 +9,18 @@ import numpy as np
 import onnxruntime as ort
 from kokoro_onnx import Kokoro
 import soundfile as sf
+from app.ai.speech_text import normalize_for_speech
 
 logger = logging.getLogger(__name__)
+
+# Max seconds a request waits for a free Kokoro worker before failing with TTSBusyError
+POOL_ACQUIRE_TIMEOUT = float(os.environ.get("KOKORO_POOL_TIMEOUT", "30"))
+
+class TTSBusyError(RuntimeError):
+    """All TTS workers are busy and none became free within the acquire timeout."""
+
+class TTSUnavailableError(RuntimeError):
+    """The TTS model is not loaded / has no workers. The message is for logs only, never for clients."""
 
 class KokoroTTSService:
     _instance: Optional["KokoroTTSService"] = None
@@ -72,6 +82,11 @@ class KokoroTTSService:
             logger.error(self._load_error)
             self.is_loaded = False
 
+    @property
+    def is_available(self) -> bool:
+        """True when the model is loaded and the pool was configured with at least one worker."""
+        return self.is_loaded and self.pool_size > 0
+
     @classmethod
     def get_instance(cls) -> "KokoroTTSService":
         if cls._instance is None:
@@ -110,14 +125,13 @@ class KokoroTTSService:
         return chunks
 
     def generate_speech(self, text: str, voice: str = "af_sarah", speed: float = 1.0) -> bytes:
-        if not self.is_loaded or self._pool.empty() and self.pool_size == 0:
-            raise RuntimeError(self._load_error or "Kokoro TTS service is unavailable")
+        if not self.is_available:
+            raise TTSUnavailableError(self._load_error or "Kokoro TTS service is unavailable")
 
         start_total = time.perf_counter()
 
         # Clean formatting tokens, unicode bullets, and verify spoken words exist
-        clean_input = re.sub(r'[-=_*#`~<>|•–—▪▫◆◇➢▶\(\)\[\]\{\}\/\\^@&$%]+', ' ', text).strip()
-        clean_input = re.sub(r'\s+', ' ', clean_input)
+        clean_input = normalize_for_speech(text)
         if not clean_input or not re.search(r'[a-zA-Z0-9]', clean_input):
             raise ValueError("Text input contains no spoken words")
 
@@ -136,7 +150,12 @@ class KokoroTTSService:
         sample_rate = 24000
 
         # Acquire an initialized Kokoro worker session from bounded pool
-        kokoro_worker = self._pool.get(timeout=60.0)
+        try:
+            kokoro_worker = self._pool.get(timeout=POOL_ACQUIRE_TIMEOUT)
+        except queue.Empty:
+            raise TTSBusyError(
+                f"All {self.pool_size} TTS workers are busy; no worker free after {POOL_ACQUIRE_TIMEOUT:.0f}s"
+            )
         start_inference = time.perf_counter()
         try:
             for idx, chunk in enumerate(chunks):

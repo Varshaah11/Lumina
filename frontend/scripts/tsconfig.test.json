@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2020",
+    "noEmit": false,
+    "incremental": false,
+    "plugins": [],
+    "rootDir": ".."
+  },
+  "include": ["test_mic_privacy.ts"],
+  "exclude": ["../node_modules"]
+}

@@ -8,6 +8,7 @@ import { chatService } from "@/services/chat";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { VoiceOrb } from "@/components/chat/VoiceOrb";
 import { VoiceAssistantOverlay } from "@/components/chat/VoiceAssistantOverlay";
+import { MicStatusIndicator } from "@/components/chat/MicStatusIndicator";
 import { motion } from "framer-motion";
 import { Mic, MessageSquarePlus, FileUp, GraduationCap, Sparkles, MessageSquare, ArrowRight, FileText, NotebookPen, Lightbulb, Target } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +20,10 @@ function DashboardContent() {
   const { messages, isLoading: isChatLoading, sendMessage, stopGeneration } = useChat();
 
   const [isVoiceModeOpen, setIsVoiceModeOpen] = useState(false);
-  const [isWakeWordEnabled, setIsWakeWordEnabled] = useState(true);
+  // The always-listening wake-word microphone is OFF until the user turns it on; never persisted, so a refresh or
+  // navigation always returns to OFF.
+  const [isWakeWordEnabled, setIsWakeWordEnabled] = useState(false);
+  const [isMicActive, setIsMicActive] = useState(false);
   const [recentChats, setRecentChats] = useState<any[]>([]);
   const [isChatsLoading, setIsChatsLoading] = useState(true);
 
@@ -83,6 +87,7 @@ function DashboardContent() {
         messages={messages}
         enableWakeWord={isWakeWordEnabled}
         onOpenVoiceMode={() => setIsVoiceModeOpen(true)}
+        onMicActiveChange={setIsMicActive}
       />
 
       <div className="max-w-5xl mx-auto pb-12 space-y-10">
@@ -130,19 +135,12 @@ function DashboardContent() {
               <span>Start Talking</span>
             </Button>
 
-            {/* Subtle Hands-Free Wake Word Indicator & Toggle */}
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-gray-400 backdrop-blur-md">
-              <span className={`w-2 h-2 rounded-full ${isWakeWordEnabled ? "bg-emerald-400 animate-pulse" : "bg-gray-500"}`} />
-              <span>Wake word &quot;Lumina&quot;: {isWakeWordEnabled ? "Listening..." : "OFF"}</span>
-              <button
-                type="button"
-                onClick={() => setIsWakeWordEnabled((prev) => !prev)}
-                aria-label={isWakeWordEnabled ? "Disable Lumina hands-free wake word" : "Enable Lumina hands-free wake word"}
-                className="ml-1 text-[11px] font-medium text-indigo-400 hover:text-indigo-300 underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 rounded px-1"
-              >
-                {isWakeWordEnabled ? "Disable" : "Enable"}
-              </button>
-            </div>
+            {/* Microphone state + opt-in hands-free wake word toggle (OFF by default) */}
+            <MicStatusIndicator
+              enabled={isWakeWordEnabled}
+              active={isMicActive}
+              onToggle={() => setIsWakeWordEnabled((prev) => !prev)}
+            />
           </div>
         </section>
 

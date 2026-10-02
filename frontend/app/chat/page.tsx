@@ -72,14 +72,14 @@ function ChatContent() {
     }
   };
 
-  const handleSendMessage = (content: string, file?: File | null) => {
+  const handleSendMessage = (content: string, file?: File | null, isVoice: boolean = false) => {
     isUserScrollingRef.current = false;
-    sendMessage(content, file);
+    sendMessage(content, file, isVoice);
   };
 
-  const handleRegenerate = (messageId: string) => {
+  const handleRegenerate = (messageId: string, isVoice?: boolean) => {
     isUserScrollingRef.current = false;
-    regenerateResponse(messageId);
+    regenerateResponse(messageId, isVoice);
   };
 
   useEffect(() => {
@@ -130,7 +130,7 @@ function ChatContent() {
                   isStreaming={isLoading && message.id === lastAssistantMessageId}
                   onRegenerate={
                     message.id === lastAssistantMessageId && message.content !== "" && !isLoading
-                      ? () => handleRegenerate(message.id)
+                      ? () => handleRegenerate(message.id, message.isVoice)
                       : undefined
                   }
                   onRetry={

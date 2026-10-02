@@ -2,6 +2,8 @@ import io
 import re
 import os
 import json
+import html
+import asyncio
 import hashlib
 import logging
 from typing import List, Dict, Any, Optional, Tuple
@@ -10,7 +12,7 @@ import pypdf
 import docx
 from sqlalchemy.orm import Session
 
-from app.models.document import Document, DocumentChunk
+from app.models.document import Document, DocumentChunk, chat_documents
 from app.ai.client import ollama_client
 from app.core.config import settings
 
@@ -22,11 +24,84 @@ MIN_CHUNK_CHARS = 60
 TOP_K_DEFAULT = 4
 SIMILARITY_THRESHOLD = 0.25
 
+class DocumentContentError(ValueError):
+    """The document cannot be used (unreadable or empty). The message is stable and safe to show to clients."""
+
 class RAGService:
     @staticmethod
     def compute_sha256(data: bytes) -> str:
         """Computes SHA-256 hash of file bytes for deduplication."""
         return hashlib.sha256(data).hexdigest()
+
+    @staticmethod
+    def link_document_to_chat(db: Session, document_id: int, chat_id: int) -> None:
+        """Associates a document with a chat (idempotent). Caller commits."""
+        exists = db.execute(
+            chat_documents.select().where(
+                chat_documents.c.chat_id == chat_id,
+                chat_documents.c.document_id == document_id,
+            )
+        ).first()
+        if not exists:
+            db.execute(chat_documents.insert().values(chat_id=chat_id, document_id=document_id))
+
+    @staticmethod
+    def get_chat_documents(db: Session, chat_id: int, user_id: int) -> List[Document]:
+        """Documents owned by the user that are attached to the given chat."""
+        return (
+            db.query(Document)
+            .join(chat_documents, chat_documents.c.document_id == Document.id)
+            .filter(chat_documents.c.chat_id == chat_id, Document.user_id == user_id)
+            .all()
+        )
+
+    @staticmethod
+    def build_fallback_context(db: Session, chat_id: int, user_id: int, max_chars: int) -> str:
+        """
+        Server-side fallback when semantic retrieval returns nothing: the leading stored chunks
+        of the chat's documents, capped at max_chars. The backend is the source of truth for
+        document content, so the client never has to send extracted text back.
+        """
+        docs = RAGService.get_chat_documents(db, chat_id, user_id)
+        if not docs:
+            return ""
+        chunks = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id.in_([d.id for d in docs]))
+            .order_by(DocumentChunk.document_id, DocumentChunk.chunk_index)
+            .all()
+        )
+        parts: List[str] = []
+        total = 0
+        for c in chunks:
+            if total + len(c.content) > max_chars and parts:
+                break
+            parts.append(c.content)
+            total += len(c.content)
+        text = "\n\n".join(parts)
+        if len(text) > max_chars:
+            text = text[:max_chars] + "\n\n[...Document content truncated to fit context window...]"
+        elif len(parts) < len(chunks):
+            text += "\n\n[...Document content truncated to fit context window...]"
+        return text
+
+    @staticmethod
+    def extract_and_chunk_sync(file_bytes: bytes, filename: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """Extraction + chunking in one CPU-bound call (run via asyncio.to_thread). Returns (full_text, chunks)."""
+        try:
+            full_text, pages = RAGService.extract_document_sync(file_bytes, filename)
+        except DocumentContentError:
+            raise
+        except Exception as e:
+            # Parser internals (pypdf/python-docx messages) stay in the log, not in the client response
+            logger.warning(f"Document extraction failed for {filename!r}: {type(e).__name__}: {e}")
+            raise DocumentContentError("Invalid file content") from e
+        if not full_text.strip():
+            raise DocumentContentError("Document appears to be empty or contains no readable text")
+        chunk_data = RAGService.chunk_document(pages)
+        if not chunk_data:
+            raise DocumentContentError("No meaningful text chunks could be extracted from this document")
+        return full_text, chunk_data
 
     @staticmethod
     def extract_document_sync(file_bytes: bytes, filename: str) -> Tuple[str, List[Dict[str, Any]]]:
@@ -182,33 +257,30 @@ class RAGService:
 
         if existing_doc:
             logger.info(f"Duplicate document upload detected ({filename}, hash={file_hash[:8]}). Reusing existing chunks.")
-            # If chat_id is provided and was not previously set, associate it with this chat
-            if chat_id and not existing_doc.chat_id:
-                existing_doc.chat_id = chat_id
+            # Attach the shared document to this chat without detaching it from any other chat
+            if chat_id:
+                RAGService.link_document_to_chat(db, existing_doc.id, chat_id)
                 db.commit()
                 db.refresh(existing_doc)
             return existing_doc
 
-        # Extract document (CPU-bound, synchronous)
-        full_text, pages = RAGService.extract_document_sync(file_bytes, filename)
-        if not full_text.strip():
-            raise ValueError("Document appears to be empty or contains no readable text")
-
-        # Chunk document
-        chunk_data = RAGService.chunk_document(pages)
-        if not chunk_data:
-            raise ValueError("No meaningful text chunks could be extracted from this document")
+        # Extract + chunk exactly once, off the event loop (CPU-bound)
+        full_text, chunk_data = await asyncio.to_thread(
+            RAGService.extract_and_chunk_sync, file_bytes, filename
+        )
 
         # Create Document record
         doc = Document(
             user_id=user_id,
-            chat_id=chat_id,
             filename=filename,
             file_type=file_type,
             file_hash=file_hash,
             char_count=len(full_text)
         )
         db.add(doc)
+        db.flush()
+        if chat_id:
+            RAGService.link_document_to_chat(db, doc.id, chat_id)
         db.commit()
         db.refresh(doc)
 
@@ -259,7 +331,10 @@ class RAGService:
         if document_id:
             doc_query = doc_query.filter(Document.id == document_id)
         elif chat_id:
-            doc_query = doc_query.filter(Document.chat_id == chat_id)
+            # Only documents explicitly attached to this chat (and owned by this user)
+            doc_query = doc_query.join(
+                chat_documents, chat_documents.c.document_id == Document.id
+            ).filter(chat_documents.c.chat_id == chat_id)
         else:
             return []
 
@@ -267,8 +342,8 @@ class RAGService:
         if not docs:
             return []
 
-        doc_ids = [d.id] if isinstance(docs, Document) else [d.id for d in docs]
-        doc_map = {d.id: d for d in (docs if isinstance(docs, list) else [docs])}
+        doc_ids = [d.id for d in docs]
+        doc_map = {d.id: d for d in docs}
 
         # Query all chunks for these documents
         chunks = (
@@ -358,6 +433,19 @@ class RAGService:
         return results
 
     @staticmethod
+    def escape_untrusted(text: str) -> str:
+        """
+        XML-escapes document-derived text (& < > " ') so it can never open or close a tag in the prompt envelope.
+        Every character is preserved (as an entity), so the model can still read the original text.
+        """
+        return html.escape(text or "", quote=True)
+
+    @staticmethod
+    def wrap_untrusted_document(text: str) -> str:
+        """Envelope for the server-side fallback context (no per-chunk metadata)."""
+        return f"<uploaded_document>\n{RAGService.escape_untrusted(text)}\n</uploaded_document>"
+
+    @staticmethod
     def build_defensive_context(retrieved_chunks: List[Dict[str, Any]]) -> str:
         """
         Wraps retrieved chunks in defensive XML envelopes to prevent prompt injection.
@@ -368,9 +456,13 @@ class RAGService:
 
         context_blocks = []
         for c in retrieved_chunks:
-            page_attr = f' page="{c["page_number"]}"' if c.get("page_number") is not None else ""
-            filename = c.get("filename", "Document")
-            content = c.get("content", "").strip()
+            # page_number comes from our own parser but is still coerced to int so it can never carry markup
+            try:
+                page_attr = f' page="{int(c["page_number"])}"' if c.get("page_number") is not None else ""
+            except (TypeError, ValueError):
+                page_attr = ""
+            filename = RAGService.escape_untrusted(c.get("filename") or "Document")
+            content = RAGService.escape_untrusted((c.get("content") or "").strip())
             block = f'<uploaded_document filename="{filename}"{page_attr}>\n{content}\n</uploaded_document>'
             context_blocks.append(block)
 

@@ -11,7 +11,6 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { Button } from "@/components/ui/button";
 import { MermaidDiagram } from "./MermaidDiagram";
-import Cookies from "js-cookie";
 import { sanitizeTextForTTS } from "@/lib/speechSanitizer";
 
 let currentAbortController: AbortController | null = null;
@@ -332,18 +331,14 @@ export function ChatBubble({
     // 1. Try Kokoro backend TTS
     try {
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const token = Cookies.get("token");
-
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
 
       const response = await fetch(`${API_BASE_URL}/tts`, {
         method: "POST",
         headers,
+        credentials: "include",
         body: JSON.stringify({ text: cleanText }),
         signal: controller.signal,
       });

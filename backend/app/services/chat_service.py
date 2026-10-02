@@ -1,6 +1,11 @@
+import re
 import json
+import asyncio
 import logging
+from datetime import datetime, timezone
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
+from app.database.database import SessionLocal
 from app.ai.service import ai_service
 from app.ai.router import intelligence_router
 from app.services.rag_service import rag_service
@@ -8,13 +13,76 @@ from app.schemas.chat import ChatRequest
 from app.schemas.user import UserResponse
 from app.models.chat import Chat
 from app.models.message import Message
-from app.models.document import Document
+from app.models.document import Document, chat_documents
 
 logger = logging.getLogger(__name__)
 
 # Context window bounds
 MAX_HISTORY_TOKENS = 3500  # Token budget for conversation history (~14,000 chars)
 MAX_DOC_CONTEXT_CHARS = 12000  # Cap fallback doc context to ~3,000 tokens
+
+# Explicit quiz commands only ("quiz me", "test me", "start quiz"); the bare word "question" must not trigger quiz mode.
+QUIZ_REQUEST_RE = re.compile(r"\b(?:quiz\s+me|test\s+me|start\s+(?:a\s+|the\s+|my\s+)?quiz)\b", re.IGNORECASE)
+
+def is_quiz_request(text: str) -> bool:
+    return bool(QUIZ_REQUEST_RE.search(text or ""))
+
+def add_message(db: Session, chat_id: int, role: str, content: str) -> Message:
+    """Persists a message and bumps the chat's updated_at in the same transaction."""
+    msg = Message(chat_id=chat_id, role=role, content=content)
+    db.add(msg)
+    touch_chat(db, chat_id)
+    db.commit()
+    return msg
+
+def touch_chat(db: Session, chat_id: int) -> None:
+    """Marks a chat as recently active. Does not commit (caller owns the transaction)."""
+    db.query(Chat).filter(Chat.id == chat_id).update(
+        {Chat.updated_at: datetime.now(timezone.utc)}, synchronize_session=False
+    )
+
+# Strong references so fire-and-forget title tasks are not garbage collected mid-flight
+_background_tasks: set = set()
+
+async def _generate_title_background(chat_id: int, user_message: str, initial_title: str) -> None:
+    """Generates an AI title after the response has been delivered. Never raises."""
+    db = SessionLocal()
+    try:
+        ai_title = await ai_service.generate_title(user_message)
+        if ai_title:
+            chat_obj = db.query(Chat).filter(Chat.id == chat_id).first()
+            # Skip if the chat was deleted or the user renamed it in the meantime
+            if chat_obj and chat_obj.title == initial_title:
+                chat_obj.title = ai_title
+                db.commit()
+    except Exception as e:
+        logger.warning(f"Background title generation failed for chat {chat_id}: {e}")
+    finally:
+        db.close()
+
+def schedule_title_generation(chat_id: int, user_message: str, initial_title: str) -> None:
+    task = asyncio.create_task(_generate_title_background(chat_id, user_message, initial_title))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+def persist_assistant_message(db: Session, chat_id: int, content: str) -> None:
+    """Saves an assistant reply (full or partial). Falls back to a fresh session if the request session is unusable."""
+    try:
+        add_message(db, chat_id, "assistant", content)
+    except Exception as e:
+        logger.error(f"Failed to persist assistant message for chat {chat_id}: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        fresh = SessionLocal()
+        try:
+            add_message(fresh, chat_id, "assistant", content)
+        except Exception as e2:
+            logger.error(f"Fallback persist of assistant message failed for chat {chat_id}: {e2}")
+            fresh.rollback()
+        finally:
+            fresh.close()
 
 def estimate_tokens(text: str) -> int:
     """Lightweight character-based token estimation (~4 characters per token)."""
@@ -112,15 +180,16 @@ class ChatService:
                 .filter(Document.id == request.document_id, Document.user_id == current_user.id)
                 .first()
             )
-            if doc and doc.chat_id != chat_id:
-                doc.chat_id = chat_id
+            if doc:
+                # Attach (never move) the document: it may be shared with other chats
+                rag_service.link_document_to_chat(db, doc.id, chat_id)
                 db.commit()
 
         # Fetch existing history for this chat prior to saving new message
         recent_msgs = (
             db.query(Message)
             .filter(Message.chat_id == chat_id)
-            .order_by(Message.created_at.asc())
+            .order_by(Message.id.asc())
             .all()
         )
 
@@ -128,19 +197,13 @@ class ChatService:
         history = select_token_bounded_history(recent_msgs, max_tokens=MAX_HISTORY_TOKENS)
 
         # Save user message
-        user_msg = Message(chat_id=chat_id, role="user", content=request.message)
-        db.add(user_msg)
-        db.commit()
+        add_message(db, chat_id, "user", request.message)
 
         # Yield chat_id so frontend knows which chat this is
         yield f"data: {json.dumps({'chat_id': chat_id})}\n\n"
 
         # Check if this chat has any associated documents (enabling multi-turn RAG)
-        chat_docs = (
-            db.query(Document)
-            .filter(Document.chat_id == chat_id, Document.user_id == current_user.id)
-            .all()
-        )
+        chat_docs = rag_service.get_chat_documents(db, chat_id, current_user.id)
 
         rag_context = ""
         # Only perform RAG retrieval if document is present AND query is relevant to the document
@@ -162,19 +225,21 @@ class ChatService:
             except Exception as e:
                 logger.error(f"RAG retrieval error in chat {chat_id}: {e}")
 
+        # On the turn that attaches a document, fall back to the stored document text
+        # (read server-side) if semantic retrieval matched nothing.
+        doc_fallback = ""
+        if request.document_id and is_doc_relevant and not rag_context:
+            doc_fallback = rag_service.build_fallback_context(
+                db, chat_id, current_user.id, MAX_DOC_CONTEXT_CHARS
+            )
+
         # Construct defensive user content for LLM
-        has_doc_content = bool(rag_context or (request.doc_context and is_doc_relevant))
+        has_doc_content = bool(rag_context or doc_fallback)
         if rag_context:
             llm_user_content = f"{rag_context}\n\n<user_question>\n{request.message}\n</user_question>"
-        elif request.doc_context and is_doc_relevant:
-            # Fallback envelope for direct doc_context if RAG didn't match
-            doc_text = request.doc_context
-            if len(doc_text) > MAX_DOC_CONTEXT_CHARS:
-                doc_text = (
-                    doc_text[:MAX_DOC_CONTEXT_CHARS]
-                    + "\n\n[...Document content truncated to fit context window...]"
-                )
-            llm_user_content = f"<uploaded_document>\n{doc_text}\n</uploaded_document>\n\n<user_question>\n{request.message}\n</user_question>"
+        elif doc_fallback:
+            doc_text = doc_fallback
+            llm_user_content = f"{rag_service.wrap_untrusted_document(doc_text)}\n\n<user_question>\n{request.message}\n</user_question>"
         else:
             # Pure fast path: normal conversation without document overhead (or unrelated general question in doc chat)
             llm_user_content = request.message
@@ -188,44 +253,38 @@ class ChatService:
         }
 
         # Check if user message is initiating or continuing a quiz
-        quiz_triggers = ("quiz me", "start quiz", "test me", "question", "quiz")
-        is_quiz = any(qt in request.message.lower() for qt in quiz_triggers) and has_doc_content
+        is_quiz = is_quiz_request(request.message) and has_doc_content
 
         full_response = ""
-        async for chunk in ai_service.stream_chat_response(
-            messages_history=history,
-            user_name=current_user.name,
-            user_profile=user_profile,
-            has_document=has_doc_content,
-            is_quiz=is_quiz,
-            is_voice=bool(request.is_voice)
-        ):
-            yield chunk
-            if chunk.startswith("data: "):
-                try:
-                    data = json.loads(chunk[6:].strip())
-                    if "token" in data:
-                        full_response += data["token"]
-                except json.JSONDecodeError:
-                    pass
-        
-        # Save assistant message
-        if full_response:
-            assistant_msg = Message(chat_id=chat_id, role="assistant", content=full_response)
-            db.add(assistant_msg)
-            db.commit()
+        completed = False
+        try:
+            async for chunk in ai_service.stream_chat_response(
+                messages_history=history,
+                user_name=current_user.name,
+                user_profile=user_profile,
+                has_document=has_doc_content,
+                is_quiz=is_quiz,
+                is_voice=bool(request.is_voice)
+            ):
+                # Count the token before yielding it: if the client stops right after receiving it,
+                # the generator is closed at the yield and the saved text must include that token
+                if chunk.startswith("data: "):
+                    try:
+                        data = json.loads(chunk[6:].strip())
+                        if "token" in data:
+                            full_response += data["token"]
+                    except json.JSONDecodeError:
+                        pass
+                yield chunk
+            completed = True
+        finally:
+            # Runs on normal completion, error, Stop, or client disconnect: keep whatever was generated
+            if full_response:
+                persist_assistant_message(db, chat_id, full_response)
 
-        # If this was a new chat creation, auto-generate concise AI title
-        if is_new_chat:
-            try:
-                ai_title = await ai_service.generate_title(request.message)
-                if ai_title:
-                    chat_obj = db.query(Chat).filter(Chat.id == chat_id).first()
-                    if chat_obj:
-                        chat_obj.title = ai_title
-                        db.commit()
-            except Exception:
-                pass
+        # New chat: generate the AI title in the background so the stream closes right away
+        if is_new_chat and completed and full_response:
+            schedule_title_generation(chat_id, request.message, title)
 
     @staticmethod
     def get_user_chats(user_id: int, db: Session):
@@ -243,7 +302,18 @@ class ChatService:
         chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
         if not chat:
             return False
-        db.delete(chat)
+        doc_ids = [d.id for d in chat.documents]
+        db.delete(chat)  # also removes this chat's chat_documents link rows
+        db.flush()
+        # Documents are shared across chats: only remove the ones no other chat still uses
+        for doc_id in doc_ids:
+            remaining = db.execute(
+                select(func.count()).select_from(chat_documents).where(chat_documents.c.document_id == doc_id)
+            ).scalar()
+            if not remaining:
+                orphan = db.get(Document, doc_id)
+                if orphan:
+                    db.delete(orphan)
         db.commit()
         return True
 
@@ -267,17 +337,23 @@ class ChatService:
         return chat
 
     @staticmethod
-    async def process_regenerate_stream(chat_id: int, current_user: UserResponse, db: Session):
+    async def process_regenerate_stream(
+        chat_id: int,
+        current_user: UserResponse,
+        db: Session,
+        is_voice: bool = False
+    ):
         """
         Regenerates the latest assistant response for a chat and streams the response via SSE.
         Maintains RAG retrieval and document context if the chat has associated documents.
+        Preserves voice mode behavior if is_voice is True.
         """
         chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
         if not chat:
             yield f"data: {json.dumps({'error': 'Chat not found'})}\n\n"
             return
 
-        existing_msgs = db.query(Message).filter(Message.chat_id == chat_id).order_by(Message.created_at.asc()).all()
+        existing_msgs = db.query(Message).filter(Message.chat_id == chat_id).order_by(Message.id.asc()).all()
         if not existing_msgs:
             yield f"data: {json.dumps({'error': 'No messages found in chat'})}\n\n"
             return
@@ -298,11 +374,7 @@ class ChatService:
         history = select_token_bounded_history(history_msgs, max_tokens=MAX_HISTORY_TOKENS)
 
         # Check if chat has associated documents to re-inject RAG context for the prompt
-        chat_docs = (
-            db.query(Document)
-            .filter(Document.chat_id == chat_id, Document.user_id == current_user.id)
-            .all()
-        )
+        chat_docs = rag_service.get_chat_documents(db, chat_id, current_user.id)
         has_doc_content = False
         if chat_docs and history:
             target_user_msg = existing_msgs[target_index - 1]
@@ -332,8 +404,7 @@ class ChatService:
         }
 
         target_user_text = existing_msgs[target_index - 1].content if target_index > 0 else ""
-        quiz_triggers = ("quiz me", "start quiz", "test me", "question", "quiz")
-        is_quiz = any(qt in target_user_text.lower() for qt in quiz_triggers) and has_doc_content
+        is_quiz = is_quiz_request(target_user_text) and has_doc_content
 
         full_response = ""
         try:
@@ -342,9 +413,9 @@ class ChatService:
                 user_name=current_user.name,
                 user_profile=user_profile,
                 has_document=has_doc_content,
-                is_quiz=is_quiz
+                is_quiz=is_quiz,
+                is_voice=is_voice
             ):
-                yield chunk
                 if chunk.startswith("data: "):
                     try:
                         data = json.loads(chunk[6:].strip())
@@ -352,9 +423,17 @@ class ChatService:
                             full_response += data["token"]
                     except json.JSONDecodeError:
                         pass
+                yield chunk
         finally:
             if full_response:
-                target_assistant_msg.content = full_response
-                db.commit()
+                try:
+                    target_assistant_msg.content = full_response
+                    touch_chat(db, chat_id)
+                    db.commit()
+                except Exception as e:
+                    logger.error(f"Failed to persist regenerated message for chat {chat_id}: {e}")
+                    db.rollback()
+
+    stream_regenerate_response = process_regenerate_stream
 
 chat_service = ChatService()

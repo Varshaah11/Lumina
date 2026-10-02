@@ -1,17 +1,15 @@
 "use client";
 
 import React, { createContext, useState, useEffect, ReactNode } from "react";
-import Cookies from "js-cookie";
 import { User, authService, LoginData, RegisterData } from "@/services/auth";
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (updatedUser: User) => void;
   refreshUser: () => Promise<void>;
 }
@@ -20,7 +18,6 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshUser = async () => {
@@ -36,21 +33,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(updatedUser);
   };
 
-  // Load token and fetch user on initial mount
+  // Restore the session on mount: the HttpOnly cookie is invisible to JS, so ask the backend who we are
   useEffect(() => {
     const initializeAuth = async () => {
-      const storedToken = Cookies.get("token");
-      if (storedToken) {
-        setToken(storedToken);
-        try {
-          const userData = await authService.getMe();
-          setUser(userData);
-        } catch (error) {
-          // If token is invalid/expired
-          Cookies.remove("token");
-          setToken(null);
-          setUser(null);
-        }
+      try {
+        const userData = await authService.getMe();
+        setUser(userData);
+      } catch {
+        // No session, or it is invalid/expired
+        setUser(null);
       }
       setIsLoading(false);
     };
@@ -59,13 +50,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = async (data: LoginData) => {
-    const response = await authService.login(data);
-    const newToken = response.access_token;
-    
-    // Store token
-    Cookies.set("token", newToken, { expires: 7 }); // 7 days
-    setToken(newToken);
-    
+    // The backend sets the HttpOnly auth cookie on success
+    await authService.login(data);
+
     // Fetch and set user
     const userData = await authService.getMe();
     setUser(userData);
@@ -77,9 +64,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await login({ email: data.email, password: data.password });
   };
 
-  const logout = () => {
-    Cookies.remove("token");
-    setToken(null);
+  const logout = async () => {
+    try {
+      // The backend clears the HttpOnly cookie
+      await authService.logout();
+    } catch {
+      // Still leave the app; an unreachable backend cannot be told to clear the cookie
+    }
     setUser(null);
     window.location.href = "/login";
   };
@@ -88,8 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider
       value={{
         user,
-        token,
-        isAuthenticated: !!user && !!token,
+        isAuthenticated: !!user,
         isLoading,
         login,
         register,
