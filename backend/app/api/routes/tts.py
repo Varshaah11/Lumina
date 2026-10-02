@@ -22,7 +22,7 @@ async def generate_tts(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
-    Generate speech audio for text using local Kokoro TTS (af_sarah).
+    Generate speech audio for text using local Kokoro TTS (voice from KOKORO_VOICE).
     Requires authentication.
     """
     start_time = time.perf_counter()
@@ -57,7 +57,7 @@ async def generate_tts(
 
     # Client-facing messages are fixed strings; the real exception goes to the server log only
     try:
-        wav_bytes = await run_in_threadpool(tts_service.generate_speech, request.text, voice="af_sarah")
+        wav_bytes = await run_in_threadpool(tts_service.generate_speech, request.text, voice=settings.KOKORO_VOICE)
         elapsed = time.perf_counter() - start_time
         logger.info(f"[TTS Route] Successfully generated {len(wav_bytes)} bytes WAV in {elapsed:.4f}s")
         return Response(content=wav_bytes, media_type="audio/wav")

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { chatService } from "@/services/chat";
+import { getErrorMessage, isAbortError } from "@/lib/errors";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export type Role = "user" | "assistant" | "error";
@@ -10,14 +11,6 @@ export interface Message {
   content: string;
   timestamp: Date;
   isVoice?: boolean;
-}
-
-export interface ChatSession {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 interface FailedRequest {
@@ -93,7 +86,7 @@ export function useChat() {
       chatService.getChatHistory(initialChatId)
         .then((data) => {
           if (data && data.messages) {
-            setMessages(data.messages.map((m: any) => ({
+            setMessages(data.messages.map((m) => ({
               id: m.id.toString(),
               role: m.role,
               content: m.content,
@@ -213,12 +206,14 @@ export function useChat() {
 
         if (lastFailedRequestRef.current) {
           lastFailedRequestRef.current.documentId = uploadedDocId;
+          // The upload succeeded, so a retry only re-streams with documentId; stop holding the (up to 10 MB) File
+          lastFailedRequestRef.current.file = null;
           lastFailedRequestRef.current.userVisibleContent = userVisibleContent;
         }
-      } catch (err: any) {
+      } catch (err) {
         // Handle AbortError or discarded chat switch silently without creating an error bubble
         if (
-          err?.name === "AbortError" ||
+          isAbortError(err) ||
           uploadController.signal.aborted ||
           currentChatIdRef.current !== targetChatId
         ) {
@@ -237,7 +232,7 @@ export function useChat() {
           {
             id: crypto.randomUUID(),
             role: "error",
-            content: err.message || "Failed to process attached document.",
+            content: getErrorMessage(err, "Failed to process attached document."),
             timestamp: new Date(),
           },
         ]);

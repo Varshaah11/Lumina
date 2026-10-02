@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, isValidElement, type ReactNode } from "react";
 import { Message } from "@/hooks/useChat";
 import { Sparkles, Copy, Check, RotateCcw, AlertCircle, Volume2, Square } from "lucide-react";
 import { motion } from "framer-motion";
@@ -12,6 +12,7 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { Button } from "@/components/ui/button";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { sanitizeTextForTTS } from "@/lib/speechSanitizer";
+import { isAbortError } from "@/lib/errors";
 
 let currentAbortController: AbortController | null = null;
 let activeStopCallback: (() => void) | null = null;
@@ -115,12 +116,12 @@ export function getPreferredFemaleVoice(): SpeechSynthesisVoice | null {
   return voices.find((v) => v.default) || voices[0] || null;
 }
 
-function getHeadingSlug(children: any, slugTracker: Map<string, number>): string {
-  const extractText = (node: any): string => {
+function getHeadingSlug(children: ReactNode, slugTracker: Map<string, number>): string {
+  const extractText = (node: ReactNode): string => {
     if (typeof node === "string") return node;
     if (typeof node === "number") return String(node);
     if (Array.isArray(node)) return node.map(extractText).join("");
-    if (node?.props?.children) return extractText(node.props.children);
+    if (isValidElement<{ children?: ReactNode }>(node) && node.props.children) return extractText(node.props.children);
     return "";
   };
 
@@ -400,8 +401,8 @@ export function ChatBubble({
 
       await audio.play();
       return;
-    } catch (err: any) {
-      if (err?.name === "AbortError" || requestId !== globalRequestId || controller.signal.aborted) {
+    } catch (err) {
+      if (isAbortError(err) || requestId !== globalRequestId || controller.signal.aborted) {
         clearCallback();
         return;
       }
@@ -474,7 +475,7 @@ export function ChatBubble({
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
                 components={{
-                  code({ node, inline, className, children, ...props }: any) {
+                  code({ node, className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || "");
                     const lang = match ? match[1].toLowerCase() : "";
                     const codeText = String(children).replace(/\n$/, "");
@@ -484,7 +485,7 @@ export function ChatBubble({
                       return <MermaidDiagram chart={codeText} isStreaming={isStreaming} />;
                     }
 
-                    const isBlock = !inline && (match || codeText.includes("\n"));
+                    const isBlock = match || codeText.includes("\n");
 
                     return isBlock ? (
                       <div className="relative group/code my-4 rounded-xl overflow-hidden border border-white/10 bg-[#18181b] shadow-md">
@@ -512,7 +513,7 @@ export function ChatBubble({
                           </button>
                         </div>
                         <SyntaxHighlighter
-                          {...props}
+                          {...(props as Omit<typeof props, "ref">)}
                           style={vscDarkPlus}
                           language={match ? match[1] : "text"}
                           PreTag="div"
@@ -530,7 +531,7 @@ export function ChatBubble({
                       </code>
                     );
                   },
-                  h1({ children }: any) {
+                  h1({ children }) {
                     const id = getHeadingSlug(children, slugTracker);
                     return (
                       <h1 id={id} className="text-2xl font-bold text-white mt-6 mb-3 pb-1.5 border-b border-white/10 scroll-mt-4">
@@ -538,7 +539,7 @@ export function ChatBubble({
                       </h1>
                     );
                   },
-                  h2({ children }: any) {
+                  h2({ children }) {
                     const id = getHeadingSlug(children, slugTracker);
                     return (
                       <h2 id={id} className="text-xl font-bold text-white mt-5 mb-2.5 pb-1 border-b border-white/10 scroll-mt-4">
@@ -546,7 +547,7 @@ export function ChatBubble({
                       </h2>
                     );
                   },
-                  h3({ children }: any) {
+                  h3({ children }) {
                     const id = getHeadingSlug(children, slugTracker);
                     return (
                       <h3 id={id} className="text-lg font-semibold text-white mt-4 mb-2 scroll-mt-4">
@@ -554,7 +555,7 @@ export function ChatBubble({
                       </h3>
                     );
                   },
-                  h4({ children }: any) {
+                  h4({ children }) {
                     const id = getHeadingSlug(children, slugTracker);
                     return (
                       <h4 id={id} className="text-base font-semibold text-gray-200 mt-3 mb-1.5 scroll-mt-4">
@@ -562,7 +563,7 @@ export function ChatBubble({
                       </h4>
                     );
                   },
-                  h5({ children }: any) {
+                  h5({ children }) {
                     const id = getHeadingSlug(children, slugTracker);
                     return (
                       <h5 id={id} className="text-sm font-semibold text-gray-300 mt-2 mb-1 scroll-mt-4">
@@ -570,7 +571,7 @@ export function ChatBubble({
                       </h5>
                     );
                   },
-                  h6({ children }: any) {
+                  h6({ children }) {
                     const id = getHeadingSlug(children, slugTracker);
                     return (
                       <h6 id={id} className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-2 mb-1 scroll-mt-4">
@@ -578,48 +579,48 @@ export function ChatBubble({
                       </h6>
                     );
                   },
-                  p({ children }: any) {
+                  p({ children }) {
                     return <p className="my-2.5 leading-relaxed text-gray-200 text-sm">{children}</p>;
                   },
-                  ul({ children }: any) {
+                  ul({ children }) {
                     return <ul className="list-disc list-outside ml-5 space-y-1.5 my-3 text-gray-200 text-sm">{children}</ul>;
                   },
-                  ol({ children }: any) {
+                  ol({ children }) {
                     return <ol className="list-decimal list-outside ml-5 space-y-1.5 my-3 text-gray-200 text-sm">{children}</ol>;
                   },
-                  li({ children }: any) {
+                  li({ children }) {
                     return <li className="text-sm text-gray-200 leading-relaxed">{children}</li>;
                   },
-                  blockquote({ children }: any) {
+                  blockquote({ children }) {
                     return (
                       <blockquote className="border-l-4 border-indigo-500 bg-indigo-500/10 px-4 py-3 my-4 rounded-r-xl text-gray-300 italic text-sm">
                         {children}
                       </blockquote>
                     );
                   },
-                  table({ children }: any) {
+                  table({ children }) {
                     return (
                       <div className="overflow-x-auto my-4 rounded-xl border border-white/10 bg-white/[0.02] shadow-sm">
                         <table className="w-full text-left text-sm text-gray-300 border-collapse">{children}</table>
                       </div>
                     );
                   },
-                  thead({ children }: any) {
+                  thead({ children }) {
                     return <thead className="bg-white/5 border-b border-white/10 text-xs font-semibold text-gray-300 uppercase tracking-wider">{children}</thead>;
                   },
-                  tbody({ children }: any) {
+                  tbody({ children }) {
                     return <tbody className="divide-y divide-white/5">{children}</tbody>;
                   },
-                  tr({ children }: any) {
+                  tr({ children }) {
                     return <tr className="hover:bg-white/[0.02] transition-colors">{children}</tr>;
                   },
-                  th({ children }: any) {
+                  th({ children }) {
                     return <th className="px-4 py-3 text-left text-xs font-semibold text-gray-200 uppercase tracking-wider">{children}</th>;
                   },
-                  td({ children }: any) {
+                  td({ children }) {
                     return <td className="px-4 py-3 text-sm text-gray-300 whitespace-normal">{children}</td>;
                   },
-                  a({ href, children }: any) {
+                  a({ href, children }) {
                     const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
                     return (
                       <a
@@ -635,10 +636,10 @@ export function ChatBubble({
                   hr() {
                     return <hr className="my-6 border-t border-white/10" />;
                   },
-                  del({ children }: any) {
+                  del({ children }) {
                     return <del className="line-through text-gray-400">{children}</del>;
                   },
-                  input({ node, ...props }: any) {
+                  input({ node, ...props }) {
                     if (props.type === "checkbox") {
                       return (
                         <input

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # 2000 covers a typical assistant answer read aloud in one request while bounding CPU time per request:
     # measured on the dev machine, synthesis runs at roughly 0.6x real time (5000 chars took ~175s of CPU).
     KOKORO_MAX_TEXT_LENGTH: int = Field(default=2000, ge=1)
+    # Kokoro TTS voice and CPU threads per ONNX worker session (worker count and pool timeout stay in KOKORO_CONCURRENCY / KOKORO_POOL_TIMEOUT)
+    KOKORO_VOICE: str = "af_sarah"
+    KOKORO_THREADS: int = Field(default=4, ge=1)
 
     # Max size of one uploaded document. 10 MB matches the frontend picker limit and comfortably fits the supported
     # formats (PDF/DOCX/TXT/MD); extracted text is capped far lower by chunking/retrieval anyway.
@@ -39,6 +42,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_NUM_CTX: int = 8192
+    # Chat models: the strong model handles coding/reasoning/document tasks, the fast model handles general chat,
+    # voice and titles and is the fallback when the strong one is missing or fails.
+    OLLAMA_PRIMARY_MODEL: str = "llama3.1:8b"
+    OLLAMA_FALLBACK_MODEL: str = "llama3.2:3b"
     EMBEDDING_MODEL: str = "nomic-embed-text"
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

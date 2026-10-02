@@ -1,9 +1,15 @@
 import { api } from "./api";
-import { ChatSession } from "@/hooks/useChat";
+import type {
+  ChatDetail,
+  ChatStreamEvent,
+  ChatStreamPayload,
+  ChatSummary,
+  RegenerateStreamPayload,
+} from "@/types/api";
 
 function handleSSEStream(
   url: string,
-  payload: any,
+  payload: ChatStreamPayload | RegenerateStreamPayload,
   onChunk: (text: string) => void,
   onChatIdReceived: (id: string) => void,
   onError: (error: string) => void,
@@ -49,7 +55,7 @@ function handleSSEStream(
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6);
           try {
-            const data = JSON.parse(dataStr);
+            const data: ChatStreamEvent = JSON.parse(dataStr);
             if (data.error) {
               hasCalledError = true;
               onError(data.error);
@@ -58,10 +64,10 @@ function handleSSEStream(
             if (data.chat_id) {
               onChatIdReceived(data.chat_id.toString());
             }
-            if ("token" in data) {
+            if (data.token !== undefined) {
               onChunk(data.token);
             }
-          } catch (e) {
+          } catch {
             // Ignore parse errors on partial chunks if any
           }
         }
@@ -121,11 +127,11 @@ export const chatService = {
   },
 
   getChats: async () => {
-    return api<any[]>("/chat/", { method: "GET" });
+    return api<ChatSummary[]>("/chat/", { method: "GET" });
   },
 
   getChatHistory: async (chatId: string) => {
-    return api<any>(`/chat/${chatId}`, { method: "GET" });
+    return api<ChatDetail>(`/chat/${chatId}`, { method: "GET" });
   },
 
   streamMessage: (
@@ -139,7 +145,7 @@ export const chatService = {
     documentId?: number | null
   ): AbortController => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const payload: any = { message };
+    const payload: ChatStreamPayload = { message };
     if (chatId) {
       payload.chat_id = parseInt(chatId, 10);
     }
@@ -183,8 +189,8 @@ export const chatService = {
     });
   },
 
-  renameChat: async (chatId: string | number, title: string): Promise<any> => {
-    return api<any>(`/chat/${chatId}`, {
+  renameChat: async (chatId: string | number, title: string): Promise<ChatSummary> => {
+    return api<ChatSummary>(`/chat/${chatId}`, {
       method: "PATCH",
       body: JSON.stringify({ title }),
     });

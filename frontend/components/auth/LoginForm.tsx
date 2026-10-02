@@ -12,6 +12,7 @@ import { loginSchema, LoginData } from "@/services/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getErrorMessage } from "@/lib/errors";
 
 export function LoginForm() {
   const { login } = useAuth();
@@ -32,8 +33,8 @@ export function LoginForm() {
     try {
       await login(data);
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Failed to login. Please check your credentials.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to login. Please check your credentials."));
     }
   };
 

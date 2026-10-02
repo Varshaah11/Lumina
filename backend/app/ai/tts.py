@@ -10,6 +10,7 @@ import onnxruntime as ort
 from kokoro_onnx import Kokoro
 import soundfile as sf
 from app.ai.speech_text import normalize_for_speech
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class KokoroTTSService:
                 return
 
             providers = ["CPUExecutionProvider"]
-            threads = 4
+            threads = settings.KOKORO_THREADS
             exec_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
             logger.info(
@@ -124,7 +125,8 @@ class KokoroTTSService:
 
         return chunks
 
-    def generate_speech(self, text: str, voice: str = "af_sarah", speed: float = 1.0) -> bytes:
+    def generate_speech(self, text: str, voice: str | None = None, speed: float = 1.0) -> bytes:
+        voice = voice or settings.KOKORO_VOICE
         if not self.is_available:
             raise TTSUnavailableError(self._load_error or "Kokoro TTS service is unavailable")
 

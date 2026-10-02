@@ -4,13 +4,16 @@ import { useEffect, useState, useRef } from "react";
 import mermaid from "mermaid";
 import DOMPurify from "dompurify";
 import { Check, Copy, Code, Loader2 } from "lucide-react";
+import { debugLog } from "@/lib/debug";
+import { getErrorMessage } from "@/lib/errors";
 
 // Patch DOMPurify factory at client module-load time so Mermaid v11 has access to addHook and sanitize methods
 if (typeof window !== "undefined") {
   try {
-    const purifyInstance = typeof (DOMPurify as any) === "function" ? (DOMPurify as any)(window) : DOMPurify;
+    const purifyInstance = typeof DOMPurify === "function" ? DOMPurify(window) : DOMPurify;
     if (purifyInstance) {
-      (window as any).DOMPurify = purifyInstance;
+      // Mermaid looks DOMPurify up on window; Object.assign avoids declaring a Window property just for this
+      Object.assign(window, { DOMPurify: purifyInstance });
       Object.assign(DOMPurify, purifyInstance);
     }
   } catch (e) {
@@ -170,7 +173,7 @@ export function MermaidDiagram({ chart, isStreaming = false }: MermaidDiagramPro
   const cleanChart = chart.trim();
 
   useEffect(() => {
-    console.log("[MermaidDiagram] svg state changed:", {
+    debugLog("[MermaidDiagram] svg state changed:", {
       hasSvg: !!svg,
       length: svg?.length,
     });
@@ -199,14 +202,14 @@ export function MermaidDiagram({ chart, isStreaming = false }: MermaidDiagramPro
       try {
         let chartToRender = primary;
         let renderId = `mermaid-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
-        console.log("[MermaidDiagram] Render starting for ID:", renderId);
+        debugLog("[MermaidDiagram] Render starting for ID:", renderId);
 
         let result;
         try {
           result = await mermaid.render(renderId, primary, container);
         } catch (primaryErr) {
           if (fallback && fallback !== primary) {
-            console.log("[MermaidDiagram] Primary render failed, attempting fallback source");
+            debugLog("[MermaidDiagram] Primary render failed, attempting fallback source");
             renderId = `mermaid-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
             result = await mermaid.render(renderId, fallback, container);
             chartToRender = fallback;
@@ -215,26 +218,26 @@ export function MermaidDiagram({ chart, isStreaming = false }: MermaidDiagramPro
           }
         }
 
-        console.log("[MermaidDiagram] Render completed for ID:", renderId);
-        console.log("[MermaidDiagram] SVG returned, length:", result?.svg?.length);
+        debugLog("[MermaidDiagram] Render completed for ID:", renderId);
+        debugLog("[MermaidDiagram] SVG returned, length:", result?.svg?.length);
 
         if (!result?.svg) {
           throw new Error("Mermaid returned no SVG");
         }
 
         if (!isCancelled) {
-          console.log("[MermaidDiagram] BEFORE setSvg", {
+          debugLog("[MermaidDiagram] BEFORE setSvg", {
             svgLength: result?.svg?.length,
           });
           setSvg(result.svg);
-          console.log("[MermaidDiagram] AFTER setSvg");
+          debugLog("[MermaidDiagram] AFTER setSvg");
           setError(false);
         }
-      } catch (err: any) {
+      } catch (err) {
         if (!isCancelled) {
           const errObj = {
-            message: err?.message || (err instanceof Error ? err.message : String(err)),
-            stack: err?.stack || (err instanceof Error ? err.stack : undefined),
+            message: getErrorMessage(err, String(err)),
+            stack: err instanceof Error ? err.stack : undefined,
             str: String(err),
             json: (() => {
               try { return JSON.stringify(err); } catch { return undefined; }

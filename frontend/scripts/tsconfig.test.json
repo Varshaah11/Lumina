@@ -9,6 +9,11 @@
     "plugins": [],
     "rootDir": ".."
   },
-  "include": ["test_mic_privacy.ts"],
-  "exclude": ["../node_modules"]
+  "include": [
+    "test_mic_privacy.ts",
+    "test_code_quality.ts"
+  ],
+  "exclude": [
+    "../node_modules"
+  ]
 }

@@ -15,6 +15,8 @@ import re
 import logging
 from typing import Optional, Dict, Any
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 class TaskType(str, Enum):
@@ -155,8 +157,8 @@ class IntelligenceRouter:
         has_document: bool = False,
         is_title: bool = False,
         available_models: Optional[list] = None,
-        primary_model: str = "llama3.1:8b",
-        fallback_model: str = "llama3.2:3b",
+        primary_model: Optional[str] = None,
+        fallback_model: Optional[str] = None,
         extra_options: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
@@ -172,6 +174,8 @@ class IntelligenceRouter:
         sampling = cls.get_sampling_options(task, extra_options=extra_options)
 
         # Select model based on tier and availability
+        primary_model = primary_model or settings.OLLAMA_PRIMARY_MODEL
+        fallback_model = fallback_model or settings.OLLAMA_FALLBACK_MODEL
         models_list = available_models or []
         if tier == "strong" and primary_model in models_list:
             selected_model = primary_model

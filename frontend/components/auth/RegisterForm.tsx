@@ -12,6 +12,7 @@ import { registerSchema, RegisterData } from "@/services/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getErrorMessage } from "@/lib/errors";
 
 export function RegisterForm() {
   const { register: registerUser } = useAuth();
@@ -33,8 +34,8 @@ export function RegisterForm() {
     try {
       await registerUser(data);
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Failed to register. Please try again.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to register. Please try again."));
     }
   };
 

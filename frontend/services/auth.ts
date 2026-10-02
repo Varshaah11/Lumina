@@ -68,12 +68,6 @@ export const authService = {
     });
   },
 
-  async getProfile(): Promise<User> {
-    return api<User>("/auth/profile", {
-      method: "GET",
-    });
-  },
-
   async updateProfile(data: { name?: string; location?: string | null; bio?: string | null }): Promise<User> {
     return api<User>("/auth/profile", {
       method: "PATCH",

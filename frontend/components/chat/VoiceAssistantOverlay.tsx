@@ -237,10 +237,10 @@ export function VoiceAssistantOverlay({
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeKatex]}
                       components={{
-                        code({ node, inline, className, children, ...props }: any) {
+                        code({ node, className, children, ...props }) {
                           const match = /language-(\w+)/.exec(className || "");
                           const codeText = String(children).replace(/\n$/, "");
-                          const isBlock = !inline && (match || codeText.includes("\n"));
+                          const isBlock = match || codeText.includes("\n");
 
                           return isBlock ? (
                             <div className="relative group/code my-3 rounded-xl overflow-hidden border border-white/10 bg-[#18181b] shadow-md">
@@ -250,7 +250,7 @@ export function VoiceAssistantOverlay({
                                 </span>
                               </div>
                               <SyntaxHighlighter
-                                {...props}
+                                {...(props as Omit<typeof props, "ref">)}
                                 style={vscDarkPlus}
                                 language={match ? match[1] : "text"}
                                 PreTag="div"
@@ -268,45 +268,45 @@ export function VoiceAssistantOverlay({
                             </code>
                           );
                         },
-                        h1({ children }: any) {
+                        h1({ children }) {
                           return <h1 className="text-base sm:text-lg font-bold text-white mt-4 mb-2 pb-1 border-b border-white/10">{children}</h1>;
                         },
-                        h2({ children }: any) {
+                        h2({ children }) {
                           return <h2 className="text-sm sm:text-base font-bold text-white mt-3 mb-1.5 pb-1 border-b border-white/10">{children}</h2>;
                         },
-                        h3({ children }: any) {
+                        h3({ children }) {
                           return <h3 className="text-xs sm:text-sm font-semibold text-white mt-2.5 mb-1">{children}</h3>;
                         },
-                        p({ children }: any) {
+                        p({ children }) {
                           return <p className="my-1.5 leading-relaxed text-gray-200">{children}</p>;
                         },
-                        ul({ children }: any) {
+                        ul({ children }) {
                           return <ul className="list-disc list-outside ml-4 space-y-1 my-2 text-gray-200">{children}</ul>;
                         },
-                        ol({ children }: any) {
+                        ol({ children }) {
                           return <ol className="list-decimal list-outside ml-4 space-y-1 my-2 text-gray-200">{children}</ol>;
                         },
-                        li({ children }: any) {
+                        li({ children }) {
                           return <li className="text-xs sm:text-sm text-gray-200 leading-relaxed">{children}</li>;
                         },
-                        blockquote({ children }: any) {
+                        blockquote({ children }) {
                           return (
                             <blockquote className="border-l-4 border-indigo-500 bg-indigo-500/10 px-3 py-2 my-2 rounded-r-xl text-gray-300 italic text-xs">
                               {children}
                             </blockquote>
                           );
                         },
-                        table({ children }: any) {
+                        table({ children }) {
                           return (
                             <div className="overflow-x-auto my-2 rounded-xl border border-white/10 bg-white/[0.02]">
                               <table className="w-full text-left text-xs text-gray-300 border-collapse">{children}</table>
                             </div>
                           );
                         },
-                        th({ children }: any) {
+                        th({ children }) {
                           return <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-200 uppercase tracking-wider bg-white/5 border-b border-white/10">{children}</th>;
                         },
-                        td({ children }: any) {
+                        td({ children }) {
                           return <td className="px-3 py-2 text-xs text-gray-300 border-b border-white/5">{children}</td>;
                         },
                         hr() {

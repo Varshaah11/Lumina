@@ -1,7 +1,9 @@
+import type { ApiErrorBody } from "@/types/api";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public data?: any) {
+  constructor(public status: number, message: string, public data?: ApiErrorBody | string | null) {
     super(message);
     this.name = "ApiError";
   }
@@ -24,7 +26,7 @@ export const api = async <T>(endpoint: string, options: RequestInit = {}): Promi
     credentials: "include",
   });
 
-  let data;
+  let data: unknown;
   const contentType = response.headers.get("content-type");
   try {
     if (contentType && contentType.includes("application/json")) {
@@ -38,10 +40,11 @@ export const api = async <T>(endpoint: string, options: RequestInit = {}): Promi
 
   if (!response.ok) {
     // Try to extract detail message from FastAPI error format
-    const message = (data && data.detail) 
-      ? (typeof data.detail === 'string' ? data.detail : data.detail[0]?.msg || JSON.stringify(data.detail))
-      : (data?.message || "An error occurred");
-    throw new ApiError(response.status, message, data);
+    const body: ApiErrorBody | null = data && typeof data === "object" ? (data as ApiErrorBody) : null;
+    const message = body?.detail
+      ? (typeof body.detail === 'string' ? body.detail : body.detail[0]?.msg || JSON.stringify(body.detail))
+      : (body?.message || "An error occurred");
+    throw new ApiError(response.status, message, body ?? (typeof data === "string" ? data : null));
   }
 
   return data as T;

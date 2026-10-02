@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useChat } from "@/hooks/useChat";
 import { chatService } from "@/services/chat";
+import type { ChatSummary } from "@/types/api";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { VoiceOrb } from "@/components/chat/VoiceOrb";
 import { VoiceAssistantOverlay } from "@/components/chat/VoiceAssistantOverlay";
@@ -24,7 +25,7 @@ function DashboardContent() {
   // navigation always returns to OFF.
   const [isWakeWordEnabled, setIsWakeWordEnabled] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
-  const [recentChats, setRecentChats] = useState<any[]>([]);
+  const [recentChats, setRecentChats] = useState<ChatSummary[]>([]);
   const [isChatsLoading, setIsChatsLoading] = useState(true);
 
   // Time-based assistant greeting

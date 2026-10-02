@@ -2,15 +2,15 @@ import logging
 import json
 import re
 from typing import Optional
-from httpx import ConnectError
 from app.ai.client import ollama_client
 from app.ai.prompts import get_system_prompt
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Recommended default model
-PRIMARY_MODEL = "llama3.1:8b"
-FALLBACK_MODEL = "llama3.2:3b"
+# Chat models (configurable via OLLAMA_PRIMARY_MODEL / OLLAMA_FALLBACK_MODEL)
+PRIMARY_MODEL = settings.OLLAMA_PRIMARY_MODEL
+FALLBACK_MODEL = settings.OLLAMA_FALLBACK_MODEL
 
 SHORT_GREETINGS = {"hi", "hello", "hey", "greetings", "sup", "yo", "test", "help", "hola"}
 
@@ -230,7 +230,7 @@ class AIService:
                 stream=True,
                 options=sampling_options
             )
-        except (ConnectError, Exception) as initial_err:
+        except Exception as initial_err:
             logger.warning(f"Generation failed on model '{used_model}': {initial_err}. Invalidate cache & retry on fallback.")
             AIService.invalidate_model_cache()
             if used_model != FALLBACK_MODEL:

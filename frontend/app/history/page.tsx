@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { chatService } from "@/services/chat";
+import { getErrorMessage } from "@/lib/errors";
+import type { ChatSummary } from "@/types/api";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
@@ -22,12 +24,12 @@ import { Button } from "@/components/ui/button";
 
 export default function HistoryPage() {
   const router = useRouter();
-  const [chats, setChats] = useState<any[]>([]);
+  const [chats, setChats] = useState<ChatSummary[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Deletion state
-  const [chatToDelete, setChatToDelete] = useState<any | null>(null);
+  const [chatToDelete, setChatToDelete] = useState<ChatSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -55,7 +57,7 @@ export default function HistoryPage() {
     loadChats();
   }, []);
 
-  const handleDeleteClick = (e: React.MouseEvent, chat: any) => {
+  const handleDeleteClick = (e: React.MouseEvent, chat: ChatSummary) => {
     e.stopPropagation();
     e.preventDefault();
     setDeleteError(null);
@@ -73,9 +75,9 @@ export default function HistoryPage() {
       setChats((prev) => prev.filter((c) => c.id !== targetChat.id));
       setChatToDelete(null);
       window.dispatchEvent(new Event("chats-updated"));
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to delete chat:", err);
-      setDeleteError(err?.message || "Failed to delete chat.");
+      setDeleteError(getErrorMessage(err, "Failed to delete chat."));
     } finally {
       setIsDeleting(false);
     }
@@ -95,7 +97,7 @@ export default function HistoryPage() {
     };
   }, [chatToDelete, isDeleting]);
 
-  const handleRenameClick = (e: React.MouseEvent, chat: any) => {
+  const handleRenameClick = (e: React.MouseEvent, chat: ChatSummary) => {
     e.stopPropagation();
     e.preventDefault();
     setRenameError(null);
@@ -113,7 +115,7 @@ export default function HistoryPage() {
     setRenameError(null);
   };
 
-  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent, chat?: any) => {
+  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent, chat?: ChatSummary) => {
     if (e) {
       e.stopPropagation();
       e.preventDefault();
@@ -135,9 +137,9 @@ export default function HistoryPage() {
       setEditingChatId(null);
       setEditingTitle("");
       window.dispatchEvent(new Event("chats-updated"));
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to rename chat:", err);
-      setRenameError(err?.message || "Failed to rename chat.");
+      setRenameError(getErrorMessage(err, "Failed to rename chat."));
     } finally {
       setIsRenaming(false);
     }

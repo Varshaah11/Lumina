@@ -85,6 +85,7 @@ def get_me(current_user: User = Depends(get_current_user)):
 def get_profile(current_user: User = Depends(get_current_user)):
     """
     Get the currently authenticated user's profile details.
+    Same payload as GET /auth/me; kept as an alias for API compatibility (used by scripts/test_profile_memory.py).
     """
     return current_user
 

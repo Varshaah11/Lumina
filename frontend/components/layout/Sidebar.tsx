@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { chatService } from "@/services/chat";
+import { getErrorMessage } from "@/lib/errors";
+import type { ChatSummary } from "@/types/api";
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -38,10 +40,10 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
   const [currentChatId, setCurrentChatId] = useState<string | null>(searchChatId || null);
 
   const { logout } = useAuth();
-  const [recentChats, setRecentChats] = useState<any[]>([]);
+  const [recentChats, setRecentChats] = useState<ChatSummary[]>([]);
 
   // State for chat deletion confirmation
-  const [chatToDelete, setChatToDelete] = useState<any | null>(null);
+  const [chatToDelete, setChatToDelete] = useState<ChatSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -91,7 +93,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     };
   }, [pathname, searchParams]);
 
-  const handleDeleteClick = (e: React.MouseEvent, chat: any) => {
+  const handleDeleteClick = (e: React.MouseEvent, chat: ChatSummary) => {
     e.stopPropagation();
     e.preventDefault();
     setDeleteError(null);
@@ -117,9 +119,9 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       }
 
       setChatToDelete(null);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to delete chat:", err);
-      const errorMessage = err?.message || "Failed to delete chat. Please try again.";
+      const errorMessage = getErrorMessage(err, "Failed to delete chat. Please try again.");
       setDeleteError(errorMessage);
       // Retain chat in state if deletion fails
     } finally {
@@ -141,7 +143,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     };
   }, [chatToDelete, isDeleting]);
 
-  const handleRenameClick = (e: React.MouseEvent, chat: any) => {
+  const handleRenameClick = (e: React.MouseEvent, chat: ChatSummary) => {
     e.stopPropagation();
     e.preventDefault();
     setRenameError(null);
@@ -159,7 +161,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     setRenameError(null);
   };
 
-  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent, chat?: any) => {
+  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent, chat?: ChatSummary) => {
     if (e) {
       e.stopPropagation();
       e.preventDefault();
@@ -183,9 +185,9 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
 
       setEditingChatId(null);
       setEditingTitle("");
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to rename chat:", err);
-      const errorMessage = err?.message || "Failed to rename chat.";
+      const errorMessage = getErrorMessage(err, "Failed to rename chat.");
       setRenameError(errorMessage);
       // Keep previous title in state
     } finally {
@@ -193,7 +195,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     }
   };
 
-  const handleKeyDownRename = (e: React.KeyboardEvent, chat: any) => {
+  const handleKeyDownRename = (e: React.KeyboardEvent, chat: ChatSummary) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleConfirmRename(e, chat);

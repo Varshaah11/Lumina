@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { authService, User } from "@/services/auth";
+import { getErrorMessage } from "@/lib/errors";
 
 interface ProfileState {
   name: string;
@@ -148,8 +149,8 @@ export default function ProfilePage() {
       successTimerRef.current = setTimeout(() => {
         setSuccessMessage(null);
       }, 4000);
-    } catch (err: any) {
-      setErrorMessage(err?.message || "Failed to save profile changes. Please try again.");
+    } catch (err) {
+      setErrorMessage(getErrorMessage(err, "Failed to save profile changes. Please try again."));
     } finally {
       setIsSaving(false);
     }
