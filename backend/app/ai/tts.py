@@ -4,6 +4,7 @@ import re
 import time
 import queue
 import logging
+import threading
 from typing import Optional, List
 import numpy as np
 import onnxruntime as ort
@@ -23,7 +24,22 @@ class TTSBusyError(RuntimeError):
 class TTSUnavailableError(RuntimeError):
     """The TTS model is not loaded / has no workers. The message is for logs only, never for clients."""
 
+def _model_paths() -> tuple[str, str, str]:
+    """(base_dir, model_path, voices_path) of the Kokoro files in backend/models/kokoro/."""
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "models", "kokoro"))
+    return base_dir, os.path.join(base_dir, "kokoro-v1.0.onnx"), os.path.join(base_dir, "voices-v1.0.bin")
+
+
 class KokoroTTSService:
+    """
+    Kokoro TTS worker pool with LAZY model loading.
+
+    Creating the service (and importing this module) is cheap: no model is read. The ONNX sessions are built on the
+    first synthesis request (or an explicit ensure_loaded()), exactly once, under a lock so simultaneous first requests
+    wait for the one loader instead of building duplicate models. A failed load is remembered (_load_error) and not
+    retried until restart, as the old import-time load behaved.
+    """
+
     _instance: Optional["KokoroTTSService"] = None
 
     def __init__(self, pool_size: int = 2):
@@ -31,16 +47,20 @@ class KokoroTTSService:
         self._pool: queue.Queue = queue.Queue(maxsize=self.pool_size)
         self.is_loaded: bool = False
         self._load_error: Optional[str] = None
-        self._init_model_pool()
+        self._init_lock = threading.Lock()
+
+    def ensure_loaded(self) -> None:
+        """Loads the model pool once (thread-safe, double-checked). Blocking: call from a worker thread."""
+        if self.is_loaded or self._load_error is not None:
+            return
+        with self._init_lock:
+            if self.is_loaded or self._load_error is not None:
+                return
+            self._init_model_pool()
 
     def _init_model_pool(self):
         try:
-            # Base directory for models: backend/models/kokoro/
-            base_dir = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "..", "..", "models", "kokoro")
-            )
-            model_path = os.path.join(base_dir, "kokoro-v1.0.onnx")
-            voices_path = os.path.join(base_dir, "voices-v1.0.bin")
+            base_dir, model_path, voices_path = _model_paths()
 
             if not os.path.exists(model_path) or not os.path.exists(voices_path):
                 self._load_error = f"Kokoro model files not found in {base_dir}"
@@ -85,8 +105,24 @@ class KokoroTTSService:
 
     @property
     def is_available(self) -> bool:
-        """True when the model is loaded and the pool was configured with at least one worker."""
-        return self.is_loaded and self.pool_size > 0
+        """
+        Can this service serve (or lazily load and then serve) requests? Never loads the model.
+        True when loaded, or when not yet loaded, no load has failed, and the model files exist.
+        """
+        if self.pool_size <= 0:
+            return False
+        if self.is_loaded:
+            return True
+        if self._load_error is not None:
+            return False
+        _, model_path, voices_path = _model_paths()
+        return os.path.exists(model_path) and os.path.exists(voices_path)
+
+    def status(self) -> str:
+        """Cheap readiness for health checks (never loads the model): 'ready', 'not_loaded' (loads on first use) or 'unavailable'."""
+        if self.is_loaded and self.pool_size > 0:
+            return "ready"
+        return "not_loaded" if self.is_available else "unavailable"
 
     @classmethod
     def get_instance(cls) -> "KokoroTTSService":
@@ -128,6 +164,11 @@ class KokoroTTSService:
     def generate_speech(self, text: str, voice: str | None = None, speed: float = 1.0) -> bytes:
         voice = voice or settings.KOKORO_VOICE
         if not self.is_available:
+            raise TTSUnavailableError(self._load_error or "Kokoro TTS service is unavailable")
+
+        # First request loads the model (once); later requests return immediately
+        self.ensure_loaded()
+        if not self.is_loaded:
             raise TTSUnavailableError(self._load_error or "Kokoro TTS service is unavailable")
 
         start_total = time.perf_counter()

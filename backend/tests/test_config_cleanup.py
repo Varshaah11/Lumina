@@ -111,6 +111,8 @@ class TTSSettingsTests(unittest.TestCase):
              patch.object(tts_module.ort, "InferenceSession", fake_session), \
              patch.object(tts_module.Kokoro, "from_session", return_value=MagicMock()):
             svc = KokoroTTSService(pool_size=2)
+            self.assertEqual(captured, [], "constructing the service must not load the model")
+            svc.ensure_loaded()
         self.assertTrue(svc.is_loaded)
         self.assertEqual(captured, [3, 3])
 

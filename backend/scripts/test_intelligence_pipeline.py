@@ -53,6 +53,12 @@ def test_rag_similarity_threshold():
     db = next(get_db())
     test_user_id = 777777
     test_doc = None
+    # Foreign keys are enforced: the throwaway user the test document belongs to must really exist
+    created_user = None
+    if not db.get(User, test_user_id):
+        created_user = User(id=test_user_id, name="intelligence-test", email="intelligence-test@example.invalid", hashed_password="x")
+        db.add(created_user)
+        db.commit()
 
     try:
         # Clean up any leftover test docs
@@ -176,6 +182,9 @@ def test_rag_similarity_threshold():
     finally:
         if test_doc:
             db.delete(test_doc)
+            db.commit()
+        if created_user:
+            db.delete(created_user)
             db.commit()
         db.close()
 

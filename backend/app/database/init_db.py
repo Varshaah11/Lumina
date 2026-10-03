@@ -7,17 +7,22 @@ from app.models.message import Message
 from app.models.document import Document, DocumentChunk
 
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
-def migrate_schema():
-    """Safely adds new columns to existing SQLite tables if not present."""
+def migrate_schema(target_engine: Engine | None = None):
+    """
+    Safely brings an existing SQLite database up to the current schema: adds missing columns/indexes and backfills data.
+    Every step is idempotent and non-destructive. Defaults to the application engine; tests pass their own.
+    """
+    eng = target_engine or engine
     try:
-        inspector = inspect(engine)
+        inspector = inspect(eng)
         tables = inspector.get_table_names()
         if "users" in tables:
             columns = [col["name"] for col in inspector.get_columns("users")]
-            with engine.connect() as conn:
+            with eng.connect() as conn:
                 if "location" not in columns:
                     logger.info("Migrating users table: adding location column")
                     conn.execute(text("ALTER TABLE users ADD COLUMN location VARCHAR(255)"))
@@ -28,7 +33,7 @@ def migrate_schema():
 
             # Normalize legacy emails to trimmed lowercase (skip any that would collide with another account),
             # then enforce case-insensitive uniqueness at the database level.
-            with engine.connect() as conn:
+            with eng.connect() as conn:
                 conn.execute(text(
                     "UPDATE users SET email = lower(trim(email)) "
                     "WHERE email != lower(trim(email)) "
@@ -47,7 +52,7 @@ def migrate_schema():
         if "documents" in tables:
             doc_columns = [col["name"] for col in inspector.get_columns("documents")]
             if "chat_id" in doc_columns:
-                with engine.connect() as conn:
+                with eng.connect() as conn:
                     link_count = conn.execute(text("SELECT COUNT(*) FROM chat_documents")).scalar()
                     if not link_count:
                         result = conn.execute(text(
@@ -58,6 +63,25 @@ def migrate_schema():
                         if result.rowcount:
                             logger.info(f"Migrated {result.rowcount} legacy document-chat links into chat_documents")
                     conn.commit()
+
+                # Foreign keys are now enforced (see database.py). The legacy documents.chat_id column still carries
+                # "ON DELETE CASCADE" in existing databases, so deleting a chat would also delete a document that other
+                # chats share. The relationship now lives in chat_documents; clear the legacy reference once it is
+                # safely recorded there (only where the matching link row exists, so no information is lost).
+                with eng.connect() as conn:
+                    cleared = conn.execute(text(
+                        "UPDATE documents SET chat_id = NULL WHERE chat_id IS NOT NULL AND EXISTS ("
+                        "SELECT 1 FROM chat_documents cd WHERE cd.document_id = documents.id AND cd.chat_id = documents.chat_id)"
+                    ))
+                    if cleared.rowcount:
+                        logger.info(f"Cleared {cleared.rowcount} legacy documents.chat_id references (now in chat_documents)")
+                    conn.commit()
+
+        # Messages are always read by chat: index messages.chat_id (matches the model's index=True name)
+        if "messages" in tables:
+            with eng.connect() as conn:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_chat_id ON messages (chat_id)"))
+                conn.commit()
     except Exception as e:
         logger.error(f"Schema migration error: {e}")
 

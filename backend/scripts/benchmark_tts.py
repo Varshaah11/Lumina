@@ -24,6 +24,7 @@ def run_benchmark():
         "D": "Recursion is a fundamental computer science concept where a function calls itself to solve smaller subproblems. Understanding how recursion works requires breaking it down into two crucial components: the base case and the recursive step."
     }
 
+    tts_service.ensure_loaded()  # the model loads lazily
     if not tts_service.is_loaded:
         print("ERROR: Kokoro TTS service failed to load.")
         sys.exit(1)

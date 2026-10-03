@@ -130,6 +130,13 @@ async def run_tests():
     from app.database.session import get_db
 
     db = next(get_db())
+    # Foreign keys are enforced: the throwaway users these documents belong to must really exist
+    scratch_users = []
+    for uid in (999999, 888888):
+        if not db.get(User, uid):
+            db.add(User(id=uid, name=f"rag-test-{uid}", email=f"rag-test-{uid}@example.invalid", hashed_password="x"))
+            scratch_users.append(uid)
+    db.commit()
     try:
         # Use a unique hash to avoid collision with real data
         test_hash = "0" * 64  # Test sentinel hash
@@ -197,6 +204,11 @@ async def run_tests():
         report("RAG pipeline test", False, str(e))
         traceback.print_exc()
     finally:
+        for uid in scratch_users:
+            leftover = db.get(User, uid)
+            if leftover:
+                db.delete(leftover)
+        db.commit()
         db.close()
 
     # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    chat_id: Mapped[int] = mapped_column(Integer, ForeignKey("chats.id"))
+    chat_id: Mapped[int] = mapped_column(Integer, ForeignKey("chats.id"), index=True)
     role: Mapped[str] = mapped_column(String(50)) # 'user' or 'assistant'
     content: Mapped[str] = mapped_column(Text)
     
