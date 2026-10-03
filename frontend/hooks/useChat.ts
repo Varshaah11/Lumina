@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { chatService } from "@/services/chat";
 import { getErrorMessage, isAbortError } from "@/lib/errors";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 export type Role = "user" | "assistant" | "error";
 
@@ -23,6 +23,35 @@ interface FailedRequest {
   messageId?: string;
 }
 
+function newErrorMessage(content: string): Message {
+  return { id: crypto.randomUUID(), role: "error", content, timestamp: new Date() };
+}
+
+/** An empty assistant message that streamed tokens are appended to. `extra` carries optional fields such as isVoice. */
+function newAssistantPlaceholder(extra: { isVoice?: boolean } = {}): Message {
+  return { id: crypto.randomUUID(), role: "assistant", content: "", timestamp: new Date(), ...extra };
+}
+
+/** Appends streamed text to one message. */
+function appendToMessage(messages: Message[], messageId: string, text: string): Message[] {
+  return messages.map((msg) => (msg.id === messageId ? { ...msg, content: msg.content + text } : msg));
+}
+
+/**
+ * Applies a stream error: an assistant placeholder that never received text is dropped (a partial reply is kept) and an
+ * error bubble is appended. With `skipDuplicate`, an error identical to the last message is not added twice.
+ */
+function appendStreamError(messages: Message[], placeholderId: string, errorMsg: string, skipDuplicate: boolean): Message[] {
+  if (skipDuplicate) {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === "error" && lastMsg.content === errorMsg) {
+      return messages;
+    }
+  }
+  const remaining = messages.filter((msg) => !(msg.id === placeholderId && msg.content === ""));
+  return [...remaining, newErrorMessage(errorMsg)];
+}
+
 // The AI title is generated in the background after the stream closes, so refresh the sidebar list shortly after.
 function refreshChatListAfterTitle() {
   [5000, 15000].forEach((delay) =>
@@ -31,8 +60,6 @@ function refreshChatListAfterTitle() {
 }
 
 export function useChat() {
-
-  const router = useRouter();
   const searchParams = useSearchParams();
   const initialChatId = searchParams?.get("chatId");
 
@@ -159,10 +186,84 @@ export function useChat() {
     };
   }, []);
 
+  /**
+   * Streams the assistant reply for `content` into the placeholder message `botMsgId` (already added by the caller).
+   * Shared by sendMessage and the retry path; the only differences are controlled by `isInitialSend`:
+   *   - initial send logs stream errors, de-duplicates identical consecutive error bubbles and, for a brand-new chat,
+   *     rewrites the URL / notifies the sidebar even when the stream fails;
+   *   - a retry does none of those on error (completion handling is identical for both).
+   */
+  const startAssistantStream = ({
+    content,
+    documentId,
+    isVoice,
+    botMsgId,
+    isInitialSend,
+  }: {
+    content: string;
+    documentId?: number | null;
+    isVoice?: boolean;
+    botMsgId: string;
+    isInitialSend: boolean;
+  }) => {
+    setIsLoading(true);
+
+    const activeChatId = currentChatIdRef.current;
+    if (!activeChatId) {
+      wasStreamingNewChatRef.current = true;
+    }
+
+    // A brand-new chat (no chatId in the URL yet) gets its URL rewritten and the sidebar notified
+    const publishNewChat = () => {
+      if (currentChatIdRef.current && !initialChatId) {
+        window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
+        window.dispatchEvent(new Event("chat-created"));
+        return true;
+      }
+      return false;
+    };
+
+    abortControllerRef.current = chatService.streamMessage(
+      content,
+      activeChatId,
+      (textChunk) => {
+        setMessages((prev) => appendToMessage(prev, botMsgId, textChunk));
+      },
+      (newChatId) => {
+        if (!activeChatId) {
+          setChatId(newChatId);
+          loadedChatIdRef.current = newChatId;
+          currentChatIdRef.current = newChatId;
+        }
+      },
+      (errorMsg) => {
+        if (isInitialSend) {
+          console.warn("[useChat] streamMessage error:", errorMsg);
+        }
+        setMessages((prev) => appendStreamError(prev, botMsgId, errorMsg, isInitialSend));
+        setIsLoading(false);
+        abortControllerRef.current = null;
+        if (isInitialSend) {
+          publishNewChat();
+        }
+      },
+      () => {
+        setIsLoading(false);
+        lastFailedRequestRef.current = null;
+        abortControllerRef.current = null;
+        if (publishNewChat()) {
+          refreshChatListAfterTitle();
+        }
+      },
+      isVoice,
+      documentId
+    );
+  };
+
   const sendMessage = async (content: string, file?: File | null, isVoice: boolean = false) => {
     if ((!content.trim() && !file) || isLoading) return;
 
-    let userPromptText = content.trim();
+    const userPromptText = content.trim();
     let uploadedDocId: number | null = null;
     let userVisibleContent = userPromptText;
 
@@ -259,83 +360,17 @@ export function useChat() {
       isVoice,
     };
 
-    const botMsgId = crypto.randomUUID();
-    const botMsg: Message = {
-      id: botMsgId,
-      role: "assistant",
-      content: "",
-      timestamp: new Date(),
-      isVoice,
-    };
+    const botMsg = newAssistantPlaceholder({ isVoice });
 
     setMessages((prev) => [...prev, userMsg, botMsg]);
-    setIsLoading(true);
 
-    const activeChatId = currentChatIdRef.current;
-    if (!activeChatId) {
-      wasStreamingNewChatRef.current = true;
-    }
-
-    abortControllerRef.current = chatService.streamMessage(
-      userVisibleContent,
-      activeChatId,
-      (textChunk) => {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === botMsgId
-              ? {
-                ...msg,
-                content: msg.content + textChunk,
-              }
-              : msg
-          )
-        );
-      },
-      (newChatId) => {
-        if (!activeChatId) {
-          setChatId(newChatId);
-          loadedChatIdRef.current = newChatId;
-          currentChatIdRef.current = newChatId;
-        }
-      },
-      (errorMsg) => {
-        console.warn("[useChat] streamMessage error:", errorMsg);
-        setMessages((prev) => {
-          const lastMsg = prev[prev.length - 1];
-          if (lastMsg && lastMsg.role === "error" && lastMsg.content === errorMsg) {
-            return prev;
-          }
-          const newMessages = prev.filter(msg => !(msg.id === botMsgId && msg.content === ""));
-          return [
-            ...newMessages,
-            {
-              id: crypto.randomUUID(),
-              role: "error",
-              content: errorMsg,
-              timestamp: new Date(),
-            }
-          ];
-        });
-        setIsLoading(false);
-        abortControllerRef.current = null;
-        if (currentChatIdRef.current && !initialChatId) {
-          window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
-          window.dispatchEvent(new Event("chat-created"));
-        }
-      },
-      () => {
-        setIsLoading(false);
-        lastFailedRequestRef.current = null;
-        abortControllerRef.current = null;
-        if (currentChatIdRef.current && !initialChatId) {
-          window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
-          window.dispatchEvent(new Event("chat-created"));
-          refreshChatListAfterTitle();
-        }
-      },
+    startAssistantStream({
+      content: userVisibleContent,
+      documentId: uploadedDocId,
       isVoice,
-      uploadedDocId
-    );
+      botMsgId: botMsg.id,
+      isInitialSend: true,
+    });
   };
 
   const stopGeneration = () => {
@@ -385,13 +420,7 @@ export function useChat() {
     abortControllerRef.current = chatService.regenerateMessage(
       activeChatId,
       (textChunk) => {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === botMsgId
-              ? { ...msg, content: msg.content + textChunk }
-              : msg
-          )
-        );
+        setMessages((prev) => appendToMessage(prev, botMsgId, textChunk));
       },
       (errorMsg) => {
         console.warn("[useChat] regenerate error:", errorMsg);
@@ -401,7 +430,6 @@ export function useChat() {
             return prev;
           }
 
-          const currentMsg = prev.find((m) => m.id === botMsgId);
           const updatedMessages = prev.map((msg) => {
             if (msg.id === botMsgId && msg.content === "") {
               return { ...msg, content: oldContent };
@@ -409,15 +437,7 @@ export function useChat() {
             return msg;
           });
 
-          return [
-            ...updatedMessages,
-            {
-              id: crypto.randomUUID(),
-              role: "error",
-              content: errorMsg,
-              timestamp: new Date(),
-            },
-          ];
+          return [...updatedMessages, newErrorMessage(errorMsg)];
         });
         setIsLoading(false);
         abortControllerRef.current = null;
@@ -470,71 +490,18 @@ export function useChat() {
         .find((m) => m.role === "user");
 
       if (precedingUserMsg) {
-        // userMsg is already in chat list; create bot placeholder and re-stream
-        const botMsgId = crypto.randomUUID();
-        const botMsg: Message = {
-          id: botMsgId,
-          role: "assistant",
-          content: "",
-          timestamp: new Date(),
-        };
+        // The user message is already in the chat list; replace the error with a fresh assistant placeholder and re-stream
+        const botMsg = newAssistantPlaceholder();
 
         setMessages((prev) => [...prev.filter((m) => m.id !== errorMsgId), botMsg]);
-        setIsLoading(true);
 
-        const activeChatId = currentChatIdRef.current;
-        if (!activeChatId) {
-          wasStreamingNewChatRef.current = true;
-        }
-
-        abortControllerRef.current = chatService.streamMessage(
-          effectiveContent,
-          activeChatId,
-          (textChunk) => {
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === botMsgId
-                  ? { ...msg, content: msg.content + textChunk }
-                  : msg
-              )
-            );
-          },
-          (newChatId) => {
-            if (!activeChatId) {
-              setChatId(newChatId);
-              loadedChatIdRef.current = newChatId;
-              currentChatIdRef.current = newChatId;
-            }
-          },
-          (errorMsg) => {
-            setMessages((prev) => {
-              const newMessages = prev.filter((msg) => !(msg.id === botMsgId && msg.content === ""));
-              return [
-                ...newMessages,
-                {
-                  id: crypto.randomUUID(),
-                  role: "error",
-                  content: errorMsg,
-                  timestamp: new Date(),
-                },
-              ];
-            });
-            setIsLoading(false);
-            abortControllerRef.current = null;
-          },
-          () => {
-            setIsLoading(false);
-            lastFailedRequestRef.current = null;
-            abortControllerRef.current = null;
-            if (currentChatIdRef.current && !initialChatId) {
-              window.history.replaceState(null, "", `/chat?chatId=${currentChatIdRef.current}`);
-              window.dispatchEvent(new Event("chat-created"));
-              refreshChatListAfterTitle();
-            }
-          },
+        startAssistantStream({
+          content: effectiveContent,
+          documentId,
           isVoice,
-          documentId
-        );
+          botMsgId: botMsg.id,
+          isInitialSend: false,
+        });
         return;
       }
 
