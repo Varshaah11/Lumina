@@ -61,10 +61,14 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     ? recentChats.filter((chat) => chat.title?.toLowerCase().includes(trimmedQuery))
     : recentChats;
 
-  useEffect(() => {
-    const urlChatId = searchParams?.get("chatId") || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("chatId") : null);
-    setCurrentChatId(urlChatId);
-  }, [searchParams, pathname]);
+  // Re-sync the active chat from the URL whenever the route changes (Next keeps useSearchParams in sync with the
+  // history.replaceState that rewrites the URL for a new chat); in between, clicks and events may set it directly
+  const routeKey = `${pathname}?${searchParams?.toString() ?? ""}`;
+  const [syncedRouteKey, setSyncedRouteKey] = useState(routeKey);
+  if (routeKey !== syncedRouteKey) {
+    setSyncedRouteKey(routeKey);
+    setCurrentChatId(searchChatId || null);
+  }
 
   useEffect(() => {
     const loadChats = () => {
@@ -161,7 +165,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     setRenameError(null);
   };
 
-  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent, chat?: ChatSummary) => {
+  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) {
       e.stopPropagation();
       e.preventDefault();
@@ -195,10 +199,10 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
     }
   };
 
-  const handleKeyDownRename = (e: React.KeyboardEvent, chat: ChatSummary) => {
+  const handleKeyDownRename = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      handleConfirmRename(e, chat);
+      handleConfirmRename(e);
     } else if (e.key === "Escape") {
       e.preventDefault();
       handleCancelRename();
@@ -350,7 +354,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                               type="text"
                               value={editingTitle}
                               onChange={(e) => setEditingTitle(e.target.value)}
-                              onKeyDown={(e) => handleKeyDownRename(e, chat)}
+                              onKeyDown={(e) => handleKeyDownRename(e)}
                               maxLength={255}
                               autoFocus
                               disabled={isRenaming}
@@ -359,7 +363,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
                             />
                             <button
                               type="button"
-                              onClick={(e) => handleConfirmRename(e, chat)}
+                              onClick={(e) => handleConfirmRename(e)}
                               disabled={!editingTitle.trim() || isRenaming}
                               className="p-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-all disabled:opacity-40 disabled:hover:bg-transparent shrink-0 cursor-pointer"
                               title="Save"
@@ -548,7 +552,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
               </div>
 
               <p className="text-sm text-gray-300">
-                Are you sure you want to delete <span className="font-semibold text-white">"{chatToDelete.title}"</span>? This chat and all of its messages will be permanently deleted.
+                Are you sure you want to delete <span className="font-semibold text-white">&quot;{chatToDelete.title}&quot;</span>? This chat and all of its messages will be permanently deleted.
               </p>
 
               {deleteError && (

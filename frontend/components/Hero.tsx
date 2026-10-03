@@ -77,7 +77,7 @@ export function Hero() {
                   transition={{ duration: 0.3 }}
                   className="absolute left-0 top-0 whitespace-nowrap"
                 >
-                  "{PROMPTS[promptIndex]}"
+                  &quot;{PROMPTS[promptIndex]}&quot;
                 </motion.span>
               </AnimatePresence>
             </span>

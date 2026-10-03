@@ -281,7 +281,7 @@ export function useVoiceConversation({
 
       // Detect Intent (uses the CURRENT hasDocument, not the value from when the recognizer was created)
       const currentHasDocument = hasDocumentRef.current;
-      const intentResult: IntentResult = detectIntent(clean, currentHasDocument);
+      const intentResult: IntentResult = detectIntent(clean);
 
       // Handle NAVIGATION Intent
       if (intentResult.intent === "NAVIGATION" && intentResult.navTarget) {
@@ -539,6 +539,9 @@ export function useVoiceConversation({
       if (lastMessage && lastMessage.role === "assistant") {
         tts.feedAssistantText(lastMessage.content, !isLoading);
       } else if (!isLoading && lastMessage && lastMessage.role === "error") {
+        // The voice state machine's source of truth is its refs (updated outside React), so this transition cannot be
+        // derived during render; it reacts once to the chat's error message (covered by the voice hook tests)
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setErrorMessage(lastMessage.content);
         setVoiceState("ERROR");
         isSubmittingRef.current = false;

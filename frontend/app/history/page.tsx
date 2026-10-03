@@ -39,22 +39,21 @@ export default function HistoryPage() {
   const [isRenaming, setIsRenaming] = useState<boolean>(false);
   const [renameError, setRenameError] = useState<string | null>(null);
 
-  const loadChats = async () => {
-    setIsLoading(true);
-    try {
-      const data = await chatService.getChats();
-      if (Array.isArray(data)) {
-        setChats(data);
-      }
-    } catch (err) {
-      console.error("Failed to load chat history:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Load the chat list once on mount (isLoading starts as true)
   useEffect(() => {
-    loadChats();
+    let active = true;
+    chatService
+      .getChats()
+      .then((data) => {
+        if (active && Array.isArray(data)) setChats(data);
+      })
+      .catch((err) => console.error("Failed to load chat history:", err))
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleDeleteClick = (e: React.MouseEvent, chat: ChatSummary) => {
@@ -115,7 +114,7 @@ export default function HistoryPage() {
     setRenameError(null);
   };
 
-  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent, chat?: ChatSummary) => {
+  const handleConfirmRename = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e) {
       e.stopPropagation();
       e.preventDefault();
@@ -349,7 +348,7 @@ export default function HistoryPage() {
                 </div>
 
                 <p className="text-sm text-gray-300">
-                  Are you sure you want to delete <span className="font-semibold text-white">"{chatToDelete.title}"</span>?
+                  Are you sure you want to delete <span className="font-semibold text-white">&quot;{chatToDelete.title}&quot;</span>?
                 </p>
 
                 {deleteError && (

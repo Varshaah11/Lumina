@@ -8,7 +8,7 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { EmptyState } from "@/components/chat/EmptyState";
 import { VoiceAssistantOverlay } from "@/components/chat/VoiceAssistantOverlay";
 import { useChat } from "@/hooks/useChat";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 
 function ChatContent() {

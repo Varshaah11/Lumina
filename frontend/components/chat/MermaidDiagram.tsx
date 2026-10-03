@@ -98,10 +98,10 @@ function normalizeMermaidSource(chart: string): string {
     // Match flowchart edge arrows (do NOT match sequence arrows like ->>)
     const edgeMatch = trimmed.match(/^([^|\-]+?)\s*(?<!-)(-->|---|->(?![>])|<--|-\.->|==>)\s*(?:\|([^|]+)\|)?\s*(.+)$/);
     if (edgeMatch) {
-      let left = fixNodeId(edgeMatch[1]);
+      const left = fixNodeId(edgeMatch[1]);
       const arrow = edgeMatch[2];
       const label = edgeMatch[3] ? edgeMatch[3].trim() : undefined;
-      let right = fixNodeId(edgeMatch[4]);
+      const right = fixNodeId(edgeMatch[4]);
 
       return label ? `${left} ${arrow}|${label}| ${right}` : `${left} ${arrow} ${right}`;
     }
@@ -200,7 +200,6 @@ export function MermaidDiagram({ chart, isStreaming = false }: MermaidDiagramPro
       const container = containerRef.current || undefined;
 
       try {
-        let chartToRender = primary;
         let renderId = `mermaid-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
         debugLog("[MermaidDiagram] Render starting for ID:", renderId);
 
@@ -212,7 +211,6 @@ export function MermaidDiagram({ chart, isStreaming = false }: MermaidDiagramPro
             debugLog("[MermaidDiagram] Primary render failed, attempting fallback source");
             renderId = `mermaid-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
             result = await mermaid.render(renderId, fallback, container);
-            chartToRender = fallback;
           } else {
             throw primaryErr;
           }

@@ -18,7 +18,7 @@ export interface IntentResult {
   requiresDocument?: boolean;
 }
 
-export function detectIntent(rawText: string, hasDocument: boolean = false): IntentResult {
+export function detectIntent(rawText: string): IntentResult {
   const text = rawText.trim().toLowerCase();
 
   if (!text) {

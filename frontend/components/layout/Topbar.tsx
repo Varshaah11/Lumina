@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Menu, Sparkles, LogOut, User as UserIcon, LayoutDashboard, MessageSquarePlus, History } from "lucide-react";
 import Link from "next/link";
@@ -12,11 +11,10 @@ export function Topbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
-    setIsOpen(false);
-  }, [pathname]);
+  // The mobile menu belongs to the route it was opened on: navigating anywhere else closes it
+  const [openOnPath, setOpenOnPath] = useState<string | null>(null);
+  const isOpen = openOnPath === pathname;
+  const setIsOpen = (open: boolean) => setOpenOnPath(open ? pathname : null);
 
   const getInitials = (name?: string) => {
     if (!name) return "U";

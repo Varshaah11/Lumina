@@ -256,3 +256,24 @@ def test_an_integrity_error_that_is_not_a_duplicate_email_is_not_disguised(db_se
         res = client.post("/auth/register", json={"name": "Second", "email": "race@example.com", "password": "password123"})
     assert res.status_code == 500
     assert res.json() == {"detail": "Internal server error"}
+
+
+# ---------------------------------------------------------------- signing key strength (startup configuration)
+def make_settings(secret_key):
+    from app.core.config import Settings
+
+    return Settings(_env_file=None, SECRET_KEY=secret_key, DATABASE_URL="sqlite://")
+
+
+@pytest.mark.parametrize("weak", ["your-secret-key-here", "  your-secret-key-here  ", "changeme", "short-but-not-empty", "x" * 31])
+def test_weak_or_placeholder_signing_keys_are_refused_without_echoing_them(weak):
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        make_settings(weak)
+    assert "SECRET_KEY" in str(caught.value)
+    assert weak.strip() not in str(caught.value)
+
+
+def test_a_32_character_signing_key_is_accepted():
+    assert make_settings("k" * 32).SECRET_KEY == "k" * 32

@@ -11,4 +11,6 @@ export const useRouter = () => ({
   replace() {}, back() {}, refresh() {}, prefetch() {},
 });
 
-export const useSearchParams = () => ({ get: (key: string) => new URLSearchParams(window.location.search).get(key) });
+export const useSearchParams = () => new URLSearchParams(window.location.search);
+
+export const usePathname = () => window.location.pathname;

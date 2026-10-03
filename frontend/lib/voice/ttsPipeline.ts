@@ -12,6 +12,7 @@ import { debugLog } from "@/lib/debug";
 import { isAbortError } from "@/lib/errors";
 import { sanitizeTextForTTS } from "@/lib/speechSanitizer";
 import { extractStreamingTTSChunks, isMeaningfulSpeechChunk } from "./chunker";
+import { API_BASE_URL } from "@/lib/config";
 
 /** Max /tts requests being synthesized at the same time (the next chunks are prefetched while one plays). */
 export const MAX_IN_FLIGHT_TTS = 2;
@@ -211,7 +212,6 @@ export class TtsPipeline {
   async playTestSound(): Promise<void> {
     debugLog("=== MANUAL TEST TTS AUDIO PLAYBACK TRIGGERED ===");
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const headers: HeadersInit = { "Content-Type": "application/json" };
 
       const testPrompt = "This is a direct test of Lumina Kokoro audio playback.";
@@ -282,7 +282,6 @@ export class TtsPipeline {
     debugLog(`[TTS PRODUCER -> /tts seq=#${seq}] "${text}" (${text.length} chars) | in_flight=${this.inFlightCount}`);
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const headers: HeadersInit = { "Content-Type": "application/json" };
 
       const res = await fetch(`${API_BASE_URL}/tts`, {

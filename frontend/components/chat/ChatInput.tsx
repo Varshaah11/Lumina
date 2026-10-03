@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from "react";
 import { Send, Paperclip, Square, Mic, X, FileText, AudioLines, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
@@ -17,44 +17,43 @@ interface ChatInputProps {
 }
 
 const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
+
+// Speech recognition support never changes while the page is open; the server (and hydration) assumes it is supported
+const subscribeNever = () => () => {};
+const browserSupportsSpeech = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+const assumeSpeechSupported = () => true;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOpenVoiceMode }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isListening, setIsListening] = useState(false);
-  const [isSupported, setIsSupported] = useState(true);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   const searchParams = useSearchParams();
+  const isSupported = useSyncExternalStore(subscribeNever, browserSupportsSpeech, assumeSpeechSupported);
+
+  // A ?prompt= link pre-fills the message box; it is applied again only when the prompt itself changes
+  const promptParam = searchParams?.get("prompt") ?? null;
+  const [appliedPrompt, setAppliedPrompt] = useState<string | null>(null);
+  if (promptParam !== appliedPrompt) {
+    setAppliedPrompt(promptParam);
+    if (promptParam) setInput(decodeURIComponent(promptParam));
+  }
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const isStartingRef = useRef(false);
   const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-trigger file upload or prompt population if query params present
+  // Auto-open the file picker for ?action=upload links
   useEffect(() => {
-    if (!searchParams) return;
-    const action = searchParams.get("action");
-    const promptParam = searchParams.get("prompt");
-    if (action === "upload" && fileInputRef.current) {
+    if (searchParams?.get("action") === "upload" && fileInputRef.current) {
       setTimeout(() => {
         fileInputRef.current?.click();
       }, 300);
     }
-    if (promptParam) {
-      setInput(decodeURIComponent(promptParam));
-    }
   }, [searchParams]);
-
-  // Check Web Speech API support on mount
-  useEffect(() => {
-    const supported =
-      typeof window !== "undefined" &&
-      !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-    setIsSupported(supported);
-  }, []);
 
   // Helper to show temporary non-blocking notices
   const showNotice = useCallback((msg: string) => {
@@ -91,17 +90,6 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
     };
   }, []);
 
-  // Clear selected file when the user starts a new chat
-  useEffect(() => {
-    const handleNewChat = () => {
-      handleRemoveFile();
-    };
-    window.addEventListener("new-chat", handleNewChat);
-    return () => {
-      window.removeEventListener("new-chat", handleNewChat);
-    };
-  }, []);
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isLoading) return;
     const file = e.target.files?.[0];
@@ -124,12 +112,20 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
     setNoticeMessage(null);
   };
 
-  const handleRemoveFile = () => {
+  const handleRemoveFile = useCallback(() => {
     setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  };
+  }, []);
+
+  // Clear selected file when the user starts a new chat
+  useEffect(() => {
+    window.addEventListener("new-chat", handleRemoveFile);
+    return () => {
+      window.removeEventListener("new-chat", handleRemoveFile);
+    };
+  }, [handleRemoveFile]);
 
   const stopListening = useCallback(() => {
     isStartingRef.current = false;
@@ -160,7 +156,6 @@ export function ChatInput({ onSend, isLoading, isUploading = false, onStop, onOp
 
     if (!SpeechRecognitionClass) {
       isStartingRef.current = false;
-      setIsSupported(false);
       showNotice("Voice input isn't supported in this browser.");
       return;
     }

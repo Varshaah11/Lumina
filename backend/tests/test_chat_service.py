@@ -367,6 +367,7 @@ class SharedDocumentTests(DBTestCase):
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE documents ADD COLUMN chat_id INTEGER"))
             conn.execute(text("UPDATE documents SET chat_id = :c WHERE id = :d"), {"c": a.id, "d": d.id})
+            conn.execute(text("DROP TABLE alembic_version"))  # a database from before migrations were introduced
         init_db()
         self.assertEqual([x.id for x in rag_service.get_chat_documents(self.db, a.id, self.user.id)], [d.id])
         init_db()  # idempotent

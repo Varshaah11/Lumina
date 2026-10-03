@@ -3,6 +3,10 @@ from pydantic import Field, field_validator, model_validator
 from app.core.cors import DEFAULT_CORS_ORIGINS, parse_cors_origins
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+MIN_SECRET_KEY_LENGTH = 32
+KNOWN_PLACEHOLDER_SECRETS = {"your-secret-key-here", "changeme", "secret"}
+
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Lumina AI"
     
@@ -48,7 +52,8 @@ class Settings(BaseSettings):
     OLLAMA_FALLBACK_MODEL: str = "llama3.2:3b"
     EMBEDDING_MODEL: str = "nomic-embed-text"
     
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # hide_input_in_errors: a rejected setting (SECRET_KEY above all) must never be echoed in a startup error
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", hide_input_in_errors=True)
 
     @property
     def cors_origins(self) -> list[str]:
@@ -59,6 +64,16 @@ class Settings(BaseSettings):
     def _check_cors_origins(cls, v: str) -> str:
         # Field-level on purpose: a failing model-level validator prints every setting (including SECRET_KEY)
         parse_cors_origins(v)  # fail at startup on a malformed CORS_ORIGINS
+        return v
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def _check_secret_key(cls, v: str) -> str:
+        # The JWT signing key: a known or short key makes every session token forgeable
+        if v.strip() in KNOWN_PLACEHOLDER_SECRETS:
+            raise ValueError("SECRET_KEY is still the example placeholder; generate a random one")
+        if len(v) < MIN_SECRET_KEY_LENGTH:
+            raise ValueError(f"SECRET_KEY must be at least {MIN_SECRET_KEY_LENGTH} characters")
         return v
 
     @model_validator(mode="after")

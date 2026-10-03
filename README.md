@@ -15,7 +15,7 @@ Lumina is a production-ready, AI-powered virtual assistant designed to be more t
 The AI tooling landscape is often fragmented and lacks cohesive, aesthetically pleasing interfaces. Lumina exists to bridge this gap by offering a portfolio-worthy, open-source template that demonstrates how to build robust, scalable AI SaaS applications. It solves the problem of starting from scratch when building enterprise-grade AI chat platforms.
 
 **Target Users**  
-- Developers looking for a modern, scalable full-stack template (Next.js 15 + FastAPI).
+- Developers looking for a modern, scalable full-stack template (Next.js 16 + FastAPI).
 - Users who need a secure, private, and localized AI assistant.
 - Enterprises wanting an extensible architecture to build custom AI workflows.
 
@@ -41,7 +41,7 @@ To evolve into a fully localized ecosystem featuring voice capabilities (Speech-
 ## 🛠️ Technology Stack
 
 ### Frontend
-- **Framework:** Next.js 15 (App Router)
+- **Framework:** Next.js 16 (App Router) with React 19
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **UI Components:** shadcn/ui
@@ -51,13 +51,16 @@ To evolve into a fully localized ecosystem featuring voice capabilities (Speech-
 - **Framework:** FastAPI
 - **Language:** Python 3.12
 - **ORM:** SQLAlchemy 2.0
-- **Database:** SQLite
+- **Database:** SQLite, schema versioned with Alembic
+- **AI:** local Ollama models (chat + `nomic-embed-text` embeddings for document retrieval), Kokoro ONNX text-to-speech
 - **Authentication:** JWT (JSON Web Tokens)
 - **Security:** bcrypt password hashing
 - **Validation:** Pydantic
 
 ### Development & DevOps
 - **Version Control:** Git & GitHub
+- **Testing:** pytest (backend), Vitest (frontend)
+- **CI:** GitHub Actions
 
 ---
 
@@ -75,6 +78,7 @@ Lumina/
 │   │   ├── models/           # DB schema definitions
 │   │   ├── schemas/          # Pydantic validation schemas
 │   │   └── services/         # Business logic layer
+│   ├── migrations/           # Alembic revisions (alembic.ini alongside)
 │   ├── tests/                # pytest suite (conftest.py, pytest.ini alongside)
 │   ├── requirements.txt      # Python dependencies
 │   ├── requirements-dev.txt  # Test dependencies (pytest)
@@ -116,16 +120,23 @@ Lumina/
    ```
 
 4. **Configure Environment Variables:**
-   Copy the example file and update the variables if necessary.
+   Copy the example file, then replace the `SECRET_KEY` placeholder with a random key (the placeholder and keys shorter
+   than 32 characters are rejected at startup).
    ```bash
    cp .env.example .env
+   python -c "import secrets; print(secrets.token_urlsafe(48))"   # paste the output as SECRET_KEY in .env
    ```
 
 5. **Run the FastAPI server:**
    ```bash
    uvicorn app.main:app --reload
    ```
-   *The server will start at `http://127.0.0.1:8000`. The SQLite database (`lumina.db`) will initialize automatically.*
+   *The server will start at `http://127.0.0.1:8000`. On startup it creates the SQLite database (`lumina.db`) or
+   upgrades it to the latest schema (see *Database & migrations* below).*
+
+   Chat, document retrieval and voice need [Ollama](https://ollama.com) running locally with the models named in
+   `.env` (by default `llama3.1:8b`, `llama3.2:3b` and `nomic-embed-text`), and the Kokoro model files in
+   `backend/models/`. `GET /health` reports which of these are available.
 
 ### Frontend Setup
 
@@ -136,7 +147,7 @@ Lumina/
 
 2. **Install packages:**
    ```bash
-   npm install
+   npm ci
    ```
 
 3. **Run the Next.js development server:**
@@ -156,7 +167,7 @@ Lumina/
 | Needs Ollama / model files / `.env`? | No (only the optional integration test needs Ollama) | No |
 
 [GitHub Actions CI](.github/workflows/ci.yml) runs on every push and pull request to `main`: the backend pytest suite,
-then the frontend tests, type check and production build. CI never needs Ollama.
+then the frontend lint, tests, type check and production build. CI never needs Ollama.
 
 ### Backend tests
 
@@ -197,10 +208,11 @@ npm test              # run all tests once
 npm run test:watch    # watch mode while developing
 ```
 
-Type checking and the production build (both also run in CI):
+Lint, type checking and the production build (all also run in CI):
 
 ```bash
 cd frontend
+npm run lint          # eslint
 npm run typecheck     # tsc --noEmit
 npm run build         # next build
 ```
@@ -212,18 +224,47 @@ npm run build         # next build
 
 ---
 
+## 🗄️ Database & migrations
+
+The backend uses SQLite through SQLAlchemy; the schema is versioned with [Alembic](https://alembic.sqlalchemy.org)
+(revisions in `backend/migrations/versions/`).
+
+- **Automatic on startup:** the server brings the database to the latest revision before serving. A new database is
+  created from the revisions; a database from before migrations were introduced is brought to the baseline with the
+  original idempotent upgrade steps and then marked as revision `0001`, without rewriting its data.
+- **Inspecting and creating revisions** (from `backend/`, using `DATABASE_URL` from `.env`):
+  ```bash
+  alembic current                                    # revision of the configured database
+  alembic history                                    # all revisions
+  alembic revision --autogenerate -m "describe it"   # draft a revision from model changes, then review it
+  alembic check                                      # fails if the models have changes no revision covers
+  ```
+- Migrations run with SQLite foreign-key enforcement switched off (required for table rebuilds) and are rolled back
+  if they would leave new dangling references. Downgrading the baseline (`alembic downgrade base`) drops every table,
+  so only do it on a disposable database.
+- Document embeddings are stored as JSON text in `document_chunks.embedding_json`. Retrieval only decodes the chunks
+  of the current chat's documents, which takes milliseconds at typical sizes; the model file documents the measured
+  limits and the upgrade path.
+
+---
+
 ## 🔒 Environment Variables
 
-See `backend/.env.example` for reference:
+All settings are listed, with defaults and explanations, in `backend/.env.example`. The essentials:
 
-```env
-PROJECT_NAME="Lumina AI"
-SECRET_KEY="your-secret-key-here"
-ALGORITHM="HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-DATABASE_URL="sqlite:///./lumina.db"
-```
-*(Ensure you never commit your actual `.env` file to version control).*
+| Variable | Purpose |
+|---|---|
+| `SECRET_KEY` | JWT signing key. Required; at least 32 random characters (the example placeholder is rejected). |
+| `DATABASE_URL` | Database location, e.g. `sqlite:///./lumina.db`. Required. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Session lifetime for both the JWT and the auth cookie (default 7 days). |
+| `AUTH_COOKIE_SECURE` | Set to `true` when serving over HTTPS. |
+| `CORS_ORIGINS` | Browser origins allowed to call the API with the auth cookie (comma-separated, no wildcards). |
+| `OLLAMA_HOST`, `OLLAMA_PRIMARY_MODEL`, `OLLAMA_FALLBACK_MODEL` | Local Ollama server and chat models. |
+| `KOKORO_VOICE`, `KOKORO_THREADS`, `KOKORO_MAX_TEXT_LENGTH` | Text-to-speech voice, CPU threads and input limit. |
+| `MAX_UPLOAD_SIZE_MB` | Document upload limit (default 10 MB). |
+
+The frontend reads `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) to reach the backend.
+*(Never commit your actual `.env` file to version control.)*
 
 ---
 
@@ -235,14 +276,22 @@ FastAPI automatically generates interactive Swagger documentation. Once the back
 
 | Method | Route | Purpose | Auth Required |
 |--------|-------|---------|---------------|
-| `GET` | `/health` | Check if the API and Database are healthy | ❌ No |
+| `GET` | `/health` | Status of the database, Ollama and text-to-speech (`healthy`, `degraded` or `unavailable`) | ❌ No |
 | `POST` | `/auth/register` | Register a new user | ❌ No |
-| `POST` | `/auth/login` | Authenticate user and return JWT access token | ❌ No |
-| `GET` | `/auth/me` | Get the currently authenticated user's details | ✅ Yes |
+| `POST` | `/auth/login` | Sign in; sets the HttpOnly session cookie (rate-limited) | ❌ No |
+| `POST` | `/auth/logout` | Clear the session cookie | ❌ No |
+| `GET` | `/auth/me` | The signed-in user (`/auth/profile` is an alias) | ✅ Yes |
+| `PATCH` | `/auth/profile` | Update name, location and bio | ✅ Yes |
+| `GET` | `/chat/` | The user's chats | ✅ Yes |
+| `GET` / `PATCH` / `DELETE` | `/chat/{chat_id}` | Read a chat with its messages, rename it, delete it | ✅ Yes |
+| `POST` | `/chat/stream` | Send a message; the reply streams back as server-sent events | ✅ Yes |
+| `POST` | `/chat/{chat_id}/regenerate` | Regenerate the latest reply (server-sent events) | ✅ Yes |
+| `POST` | `/upload` | Upload a PDF, DOCX, TXT or Markdown document (optionally to one of the user's chats) | ✅ Yes |
+| `POST` | `/tts` | Synthesize speech for a piece of text | ✅ Yes |
 
 **Request/Response Examples:**
-- **Register (`POST /auth/register`)**: Expects `{"name": "...", "email": "...", "password": "..."}`. Returns the user object with `id` and timestamps.
-- **Login (`POST /auth/login`)**: Compatible with standard OAuth2 Password Flow (Form Data). Returns `{"access_token": "...", "token_type": "bearer"}`.
+- **Register (`POST /auth/register`)**: Expects `{"name": "...", "email": "...", "password": "..."}` (password at least 8 characters). Returns the user object with `id` and timestamps.
+- **Login (`POST /auth/login`)**: Compatible with standard OAuth2 Password Flow (Form Data). The session JWT is delivered only in an HttpOnly cookie, never in the response body.
 
 ---
 

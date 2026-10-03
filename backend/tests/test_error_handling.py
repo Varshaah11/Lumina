@@ -158,3 +158,19 @@ def test_server_keeps_serving_after_an_unhandled_error(client, headers):
     with patch.object(chat_service, "get_user_chats", side_effect=RuntimeError(SECRET_MARKER)):
         assert client.get("/chat/", headers=headers).status_code == 500
     assert client.get("/chat/", headers=headers).status_code == 200
+
+
+def test_database_errors_never_carry_bound_values_into_logs(db_session):
+    """Unhandled database errors are logged server-side; their bound parameters (e-mails, password hashes) are hidden."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    from app.database.database import engine
+
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (name, email, hashed_password) VALUES ('a', 'dup@example.com', 'x')"))
+    with pytest.raises(IntegrityError) as caught, engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (name, email, hashed_password) VALUES (:n, :e, :h)"),
+                     {"n": "b", "e": "dup@example.com", "h": SECRET_MARKER})
+    assert SECRET_MARKER not in str(caught.value)
+    assert "dup@example.com" not in str(caught.value)

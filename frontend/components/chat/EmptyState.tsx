@@ -39,7 +39,7 @@ export function EmptyState({ onActionClick }: EmptyStateProps) {
         transition={{ duration: 0.5, delay: 0.2 }}
         className="text-gray-400 text-center max-w-lg mb-10"
       >
-        I'm Lumina, your advanced AI assistant. Start a conversation or pick a suggestion below.
+        I&apos;m Lumina, your advanced AI assistant. Start a conversation or pick a suggestion below.
       </motion.p>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">

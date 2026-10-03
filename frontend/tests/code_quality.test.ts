@@ -206,6 +206,29 @@ describe("code quality", () => {
     expect(calls.length > 0, "dev diagnostics should still be logged").toBeTruthy();
   });
 
+  it("the backend URL is configured in one place: a localhost default, overridable with NEXT_PUBLIC_API_URL", async () => {
+    vi.resetModules();
+    expect((await import("@/lib/config")).API_BASE_URL).toBe("http://localhost:8000");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.example.test");
+    vi.resetModules();
+    expect((await import("@/lib/config")).API_BASE_URL).toBe("https://api.example.test");
+    vi.unstubAllEnvs();
+
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(path.join(FRONTEND_ROOT, dir), { withFileTypes: true })) {
+        const rel = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(rel);
+        else if (/\.(ts|tsx)$/.test(entry.name) && rel !== path.join("lib", "config.ts")
+                 && /NEXT_PUBLIC_API_URL|localhost:8000/.test(fs.readFileSync(path.join(FRONTEND_ROOT, rel), "utf8"))) {
+          offenders.push(rel);
+        }
+      }
+    };
+    ["app", "components", "context", "hooks", "lib", "services", "types"].forEach(walk);
+    expect(offenders).toStrictEqual([]);
+  });
+
   it("source guards: no console.log in the voice hook and no explicit any in the typed modules", () => {
     const root = FRONTEND_ROOT;
     const hook = fs.readFileSync(path.join(root, "hooks/useVoiceConversation.ts"), "utf8");

@@ -6,9 +6,7 @@ before extraction, chunking, embedding or any database write.
 """
 import io
 import os
-import re
 import zipfile
-from typing import Tuple
 
 from app.core.config import settings
 

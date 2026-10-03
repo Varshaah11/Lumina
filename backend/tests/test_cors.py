@@ -88,17 +88,17 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.cors_origins, ["http://localhost:3000", "http://localhost:3001"])
 
     def test_settings_parse_env_value(self):
-        s = Settings(SECRET_KEY="x", DATABASE_URL="sqlite://", CORS_ORIGINS=" https://a.example.com/ , http://localhost:3000 ")
+        s = Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://", CORS_ORIGINS=" https://a.example.com/ , http://localhost:3000 ")
         self.assertEqual(s.cors_origins, ["https://a.example.com", "http://localhost:3000"])
 
     def test_invalid_setting_stops_startup(self):
         for raw in ("*", "", "not-an-origin"):
             with self.assertRaises(ValidationError, msg=repr(raw)):
-                Settings(SECRET_KEY="x", DATABASE_URL="sqlite://", CORS_ORIGINS=raw)
+                Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://", CORS_ORIGINS=raw)
 
     def test_env_var_is_read(self):
         with patch.dict("os.environ", {"CORS_ORIGINS": "https://env.example.com"}):
-            s = Settings(SECRET_KEY="x", DATABASE_URL="sqlite://")
+            s = Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://")
         self.assertEqual(s.cors_origins, ["https://env.example.com"])
 
     def test_env_example_documents_setting_without_production_domains(self):

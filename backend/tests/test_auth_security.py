@@ -152,8 +152,8 @@ class LoginAndCookieTests(AuthTestCase):
 
     def test_samesite_none_requires_secure(self):
         with self.assertRaises(ValidationError):
-            Settings(SECRET_KEY="x", DATABASE_URL="sqlite://", AUTH_COOKIE_SAMESITE="none", AUTH_COOKIE_SECURE=False)
-        Settings(SECRET_KEY="x", DATABASE_URL="sqlite://", AUTH_COOKIE_SAMESITE="none", AUTH_COOKIE_SECURE=True)
+            Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://", AUTH_COOKIE_SAMESITE="none", AUTH_COOKIE_SECURE=False)
+        Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://", AUTH_COOKIE_SAMESITE="none", AUTH_COOKIE_SECURE=True)
 
     def test_jwt_is_not_in_response_body(self):
         res = self.login()
@@ -193,6 +193,8 @@ class LoginAndCookieTests(AuthTestCase):
         db = SessionLocal()
         db.add(User(name="L", email=" Mixed@Example.com ", hashed_password="x"))
         db.commit(); db.close()
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE alembic_version"))  # a database from before migrations were introduced
         init_db()
         self.assertIn("mixed@example.com", self.stored_emails())
         with engine.begin() as conn:

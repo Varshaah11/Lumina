@@ -11,7 +11,7 @@ into their own account. State lives in memory and resets on restart; entries exp
 import threading
 import time
 from collections import deque
-from typing import Callable, Deque, Dict, Optional, Tuple
+from typing import Callable, Deque, Dict, Tuple
 
 from app.core.config import settings
 

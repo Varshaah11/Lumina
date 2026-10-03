@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from "react";
 import { sanitizeTextForTTS } from "@/lib/speechSanitizer";
 import { isAbortError } from "@/lib/errors";
+import { API_BASE_URL } from "@/lib/config";
 
 let currentAbortController: AbortController | null = null;
 let activeStopCallback: (() => void) | null = null;
@@ -236,7 +237,6 @@ export function useMessageSpeech(content: string) {
 
     // 1. Try Kokoro backend TTS
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };

@@ -1,4 +1,3 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { UploadCloud, MessageSquareText, Zap, ArrowRight } from "lucide-react";
 
 export function HowItWorks() {

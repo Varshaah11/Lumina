@@ -72,6 +72,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Still leave the app; an unreachable backend cannot be told to clear the cookie
     }
     setUser(null);
+    // A full page load on purpose (not router.push): it discards every in-memory client state of the signed-out user
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/login";
   };
 

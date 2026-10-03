@@ -342,7 +342,7 @@ class SizeLimitTests(UploadTestCase):
     def test_limit_is_configurable_with_sane_default(self):
         self.assertEqual(Settings.model_fields["MAX_UPLOAD_SIZE_MB"].default, 10)
         with self.assertRaises(Exception):
-            Settings(SECRET_KEY="x", DATABASE_URL="sqlite://", MAX_UPLOAD_SIZE_MB=0)
+            Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://", MAX_UPLOAD_SIZE_MB=0)
 
 
 class StreamingBodyLimitTests(unittest.TestCase):

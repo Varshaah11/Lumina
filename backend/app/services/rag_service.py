@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentChunk, chat_documents
 from app.ai.client import ollama_client
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

@@ -6,6 +6,7 @@ import type {
   ChatSummary,
   RegenerateStreamPayload,
 } from "@/types/api";
+import { API_BASE_URL } from "@/lib/config";
 
 function handleSSEStream(
   url: string,
@@ -100,7 +101,6 @@ export interface UploadFileResponse {
 
 export const chatService = {
   uploadFile: async (file: File, signal?: AbortSignal, chatId?: string | null): Promise<UploadFileResponse> => {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const formData = new FormData();
     formData.append("file", file);
     if (chatId) {
@@ -144,7 +144,6 @@ export const chatService = {
     isVoice?: boolean,
     documentId?: number | null
   ): AbortController => {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const payload: ChatStreamPayload = { message };
     if (chatId) {
       payload.chat_id = parseInt(chatId, 10);
@@ -172,7 +171,6 @@ export const chatService = {
     onComplete: () => void,
     isVoice: boolean = false
   ): AbortController => {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     return handleSSEStream(
       `${API_BASE_URL}/chat/${chatId}/regenerate`,
       { is_voice: isVoice },

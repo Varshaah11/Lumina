@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -47,17 +47,10 @@ export default function ProfilePage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<ProfileState>(() => getInitialProfile(user));
+  // The displayed profile is the signed-in user (saving updates it through updateUser); formData is the edit buffer,
+  // filled from the profile whenever editing starts or is cancelled
+  const profile = useMemo(() => getInitialProfile(user), [user]);
   const [formData, setFormData] = useState<ProfileState>(() => getInitialProfile(user));
-
-  // Sync profile and form data whenever user object changes from backend
-  useEffect(() => {
-    if (user) {
-      const resolved = getInitialProfile(user);
-      setProfile(resolved);
-      setFormData(resolved);
-    }
-  }, [user]);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const successTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -128,18 +121,8 @@ export default function ProfilePage() {
         bio: formData.bio.trim() || null,
       });
 
-      if (updateUser) {
-        updateUser(updatedUser);
-      }
-
-      const updatedProfile: ProfileState = {
-        name: updatedUser.name || trimmedName,
-        location: updatedUser.location || "",
-        bio: updatedUser.bio || "",
-      };
-
-      setProfile(updatedProfile);
-      setFormData(updatedProfile);
+      updateUser(updatedUser);
+      setFormData(getInitialProfile(updatedUser));
       setIsEditing(false);
 
       setSuccessMessage("Profile changes saved successfully.");

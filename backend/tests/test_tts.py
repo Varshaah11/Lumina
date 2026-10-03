@@ -205,7 +205,7 @@ class TTSInputLimitTests(unittest.TestCase):
     def test_default_limit_is_2000_and_configurable(self):
         self.assertEqual(Settings.model_fields["KOKORO_MAX_TEXT_LENGTH"].default, 2000)
         with self.assertRaises(Exception):
-            Settings(SECRET_KEY="x", DATABASE_URL="sqlite://", KOKORO_MAX_TEXT_LENGTH=0)
+            Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://", KOKORO_MAX_TEXT_LENGTH=0)
         example = (pathlib.Path(__file__).resolve().parents[1] / ".env.example").read_text()
         self.assertIn("KOKORO_MAX_TEXT_LENGTH=2000", example)
 

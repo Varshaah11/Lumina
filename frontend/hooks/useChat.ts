@@ -129,7 +129,8 @@ export function useChat() {
         })
         .finally(() => setIsLoading(false));
     } else {
-      if (loadedChatIdRef.current === null && chatId === null && currentChatIdRef.current === null) {
+      // currentChatIdRef mirrors chatId (synced by the effect above and set alongside every setChatId)
+      if (loadedChatIdRef.current === null && currentChatIdRef.current === null) {
         setMessages((prev) => (prev.length > 0 ? [] : prev));
         lastFailedRequestRef.current = null;
         return;

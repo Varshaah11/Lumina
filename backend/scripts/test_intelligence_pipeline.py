@@ -231,8 +231,8 @@ def test_task_aware_sampling():
     asyncio.set_event_loop(loop)
 
     with patch.object(ollama_client, "generate_chat", new_callable=AsyncMock) as mock_gen, \
-         patch.object(AIService, "get_active_model", new_callable=AsyncMock) as mock_model:
-        mock_model.return_value = "llama3.2:3b"
+         patch.object(AIService, "get_available_models", new_callable=AsyncMock) as mock_models:
+        mock_models.return_value = ["llama3.2:3b"]
 
         async def mock_gen_impl(*args, **kwargs):
             yield {"message": {"content": "Test token"}}
@@ -306,25 +306,25 @@ def test_dynamic_model_discovery():
 
     # Test 4.1: Primary model selected when available
     with patch.object(ollama_client, "list_models", new_callable=AsyncMock) as mock_list:
-        ai_service_module._cached_active_model = None
+        AIService.invalidate_model_cache()
         ai_service_module._last_model_check_time = 0.0
 
         mock_list.return_value = {"models": [{"model": PRIMARY_MODEL}, {"model": FALLBACK_MODEL}]}
-        model = loop.run_until_complete(AIService.get_active_model())
+        model = strong_task_model(loop)
         assert model == PRIMARY_MODEL
         print(f"  ✓ PASS  Primary model ({PRIMARY_MODEL}) chosen when installed")
 
         # Test 4.2: Fallback model selected when primary not available
-        ai_service_module._cached_active_model = None
+        AIService.invalidate_model_cache()
         ai_service_module._last_model_check_time = 0.0
         mock_list.return_value = {"models": [{"model": FALLBACK_MODEL}]}
-        model = loop.run_until_complete(AIService.get_active_model())
+        model = strong_task_model(loop)
         assert model == FALLBACK_MODEL
         print(f"  ✓ PASS  Fallback model ({FALLBACK_MODEL}) chosen when primary unavailable")
 
         # Test 4.3: Cache TTL - within 60s, list_models is NOT called again
         mock_list.reset_mock()
-        model_cached = loop.run_until_complete(AIService.get_active_model())
+        model_cached = strong_task_model(loop)
         assert model_cached == FALLBACK_MODEL
         assert mock_list.call_count == 0
         print("  ✓ PASS  Cached model returned within 60s TTL without calling Ollama")
@@ -332,10 +332,17 @@ def test_dynamic_model_discovery():
         # Test 4.4: After TTL expires, list_models is called again (dynamic recovery)
         ai_service_module._last_model_check_time = time.time() - (MODEL_CACHE_TTL_SECONDS + 5)
         mock_list.return_value = {"models": [{"model": PRIMARY_MODEL}]}
-        model_refreshed = loop.run_until_complete(AIService.get_active_model())
+        model_refreshed = strong_task_model(loop)
         assert model_refreshed == PRIMARY_MODEL
         assert mock_list.call_count == 1
         print("  ✓ PASS  Model availability refreshed automatically after TTL expiry")
+
+def strong_task_model(loop) -> str:
+    """Model a 'strong'-tier request is routed to for the currently reported Ollama models (the production path)."""
+    from app.ai.router import intelligence_router
+    installed = loop.run_until_complete(AIService.get_available_models())
+    return intelligence_router.route_request("Write a Python function", available_models=installed,
+                                             primary_model=PRIMARY_MODEL, fallback_model=FALLBACK_MODEL)["model"]
 
 def test_token_aware_history():
     print("\n[5] Token-Aware History Budgeting")

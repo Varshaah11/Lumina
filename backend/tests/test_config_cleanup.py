@@ -45,13 +45,13 @@ class ModelSettingsTests(unittest.TestCase):
     def test_values_come_from_environment(self):
         with patch.dict("os.environ", {"OLLAMA_PRIMARY_MODEL": "big:1", "OLLAMA_FALLBACK_MODEL": "small:1",
                                        "KOKORO_VOICE": "af_bella", "KOKORO_THREADS": "2"}):
-            s = Settings(SECRET_KEY="x", DATABASE_URL="sqlite://")
+            s = Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://")
         self.assertEqual((s.OLLAMA_PRIMARY_MODEL, s.OLLAMA_FALLBACK_MODEL, s.KOKORO_VOICE, s.KOKORO_THREADS),
                          ("big:1", "small:1", "af_bella", 2))
 
     def test_threads_must_be_positive(self):
         with self.assertRaises(Exception):
-            Settings(SECRET_KEY="x", DATABASE_URL="sqlite://", KOKORO_THREADS=0)
+            Settings(SECRET_KEY="test-secret-key-for-unit-tests-only", DATABASE_URL="sqlite://", KOKORO_THREADS=0)
 
     def test_service_constants_follow_settings(self):
         from app.ai import service
@@ -136,7 +136,7 @@ class RequirementsTests(unittest.TestCase):
         import ast
         import sys
         declared = {"fastapi", "starlette", "pydantic", "pydantic-settings", "sqlalchemy", "bcrypt", "pyjwt", "ollama", "numpy",
-                    "onnxruntime", "kokoro-onnx", "soundfile", "pypdf", "python-docx"}
+                    "onnxruntime", "kokoro-onnx", "soundfile", "pypdf", "python-docx", "alembic"}
         pins = set(self.pins())
         std = set(sys.stdlib_module_names)
         import_to_dist = {"jwt": "pyjwt", "docx": "python-docx", "kokoro_onnx": "kokoro-onnx", "pydantic_settings": "pydantic-settings"}

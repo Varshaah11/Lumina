@@ -35,10 +35,9 @@ def sanitize_title(title_text: str, fallback: str) -> str:
     return cleaned if len(cleaned) >= 2 else fallback
 
 import time
-from app.ai.router import intelligence_router, TaskType
+from app.ai.router import intelligence_router
 
 _cached_available_models: Optional[list] = None
-_cached_active_model: Optional[str] = None
 _last_model_check_time: float = 0.0
 MODEL_CACHE_TTL_SECONDS: float = 60.0
 
@@ -46,9 +45,8 @@ class AIService:
     @staticmethod
     def invalidate_model_cache():
         """Invalidates the model availability cache to force a fresh Ollama poll."""
-        global _cached_available_models, _cached_active_model, _last_model_check_time
+        global _cached_available_models, _last_model_check_time
         _cached_available_models = None
-        _cached_active_model = None
         _last_model_check_time = 0.0
 
     @staticmethod
@@ -79,25 +77,6 @@ class AIService:
 
         _last_model_check_time = now
         return _cached_available_models
-
-    @staticmethod
-    async def get_active_model(preferred_tier: str = "strong") -> str:
-        """
-        Returns the appropriate model based on tier preference and availability.
-        - 'strong' (default) -> PRIMARY_MODEL if installed, else FALLBACK_MODEL
-        - 'fast' -> FALLBACK_MODEL if installed, else first available model, else FALLBACK_MODEL
-        """
-        global _cached_active_model
-        installed = await AIService.get_available_models()
-        if preferred_tier == "strong" and PRIMARY_MODEL in installed:
-            _cached_active_model = PRIMARY_MODEL
-        elif FALLBACK_MODEL in installed:
-            _cached_active_model = FALLBACK_MODEL
-        elif installed:
-            _cached_active_model = installed[0]
-        else:
-            _cached_active_model = FALLBACK_MODEL
-        return _cached_active_model
 
     @staticmethod
     async def generate_title(user_message: str) -> str:

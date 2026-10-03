@@ -449,6 +449,4 @@ class ChatService:
                     logger.error(f"Failed to persist regenerated message for chat {chat_id}: {e}")
                     db.rollback()
 
-    stream_regenerate_response = process_regenerate_stream
-
 chat_service = ChatService()

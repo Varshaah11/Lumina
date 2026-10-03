@@ -28,9 +28,6 @@ export function HeroMockup() {
     };
   }, []);
 
-  const codeSnippet = `def hello():
-    print("Hello, Lumina!")`;
-
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-[0_0_50px_rgba(99,102,241,0.15)] overflow-hidden flex flex-col relative">
       {/* Header */}
@@ -109,7 +106,7 @@ export function HeroMockup() {
                     className="flex flex-col gap-3"
                   >
                     <div className="text-sm text-gray-300 leading-relaxed">
-                      I've analyzed your document. Here are the key insights from the research paper, along with the requested script:
+                      I&apos;ve analyzed your document. Here are the key insights from the research paper, along with the requested script:
                     </div>
                     
                     <div className="rounded-lg bg-black/60 border border-white/10 overflow-hidden font-mono text-xs">
@@ -118,7 +115,7 @@ export function HeroMockup() {
                       </div>
                       <div className="p-4 text-gray-300">
                         <span className="text-purple-400">def</span> <span className="text-blue-400">hello</span>():<br/>
-                        &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-purple-400">print</span>(<span className="text-green-400">"Hello, Lumina!"</span>)
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-purple-400">print</span>(<span className="text-green-400">&quot;Hello, Lumina!&quot;</span>)
                         <span className="inline-block w-1.5 h-3.5 ml-1 bg-white animate-pulse translate-y-0.5" />
                       </div>
                     </div>

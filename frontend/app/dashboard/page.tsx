@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useTimeOfDayGreeting } from "@/hooks/useTimeOfDayGreeting";
 import { useChat } from "@/hooks/useChat";
 import { chatService } from "@/services/chat";
 import type { ChatSummary } from "@/types/api";
@@ -29,14 +30,7 @@ function DashboardContent() {
   const [isChatsLoading, setIsChatsLoading] = useState(true);
 
   // Time-based assistant greeting
-  const [greeting, setGreeting] = useState("Good day");
-
-  useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting("Good morning");
-    else if (hour < 18) setGreeting("Good afternoon");
-    else setGreeting("Good evening");
-  }, []);
+  const greeting = useTimeOfDayGreeting();
 
   // Fetch real recent user chats
   useEffect(() => {

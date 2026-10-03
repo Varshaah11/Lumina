@@ -14,6 +14,7 @@ import pytest
 import app.ai.service as ai_service_module
 import app.database.init_db  # noqa: F401  (registers every model before Message objects are built below)
 from app.ai.client import ollama_client
+from app.ai.router import intelligence_router
 from app.ai.service import FALLBACK_MODEL, MODEL_CACHE_TTL_SECONDS, PRIMARY_MODEL, AIService, sanitize_title
 from app.models.message import Message
 from app.services.chat_service import build_retrieval_query, estimate_tokens, select_token_bounded_history
@@ -121,25 +122,45 @@ def test_request_uses_task_sampling_options(captured_options, kwargs, temperatur
 
 
 # ---------------------------------------------------------------- [4] dynamic model discovery with TTL
+def strong_task_model() -> str:
+    """The model a 'strong'-tier request is routed to, given what Ollama reports as installed (the production path)."""
+    installed = asyncio.run(AIService.get_available_models())
+    return intelligence_router.route_request("Write a Python function", available_models=installed,
+                                             primary_model=PRIMARY_MODEL, fallback_model=FALLBACK_MODEL)["model"]
+
+
 def test_model_discovery_prefers_primary_falls_back_and_caches_with_ttl():
     with patch.object(ollama_client, "list_models", new_callable=AsyncMock) as list_models:
         list_models.return_value = {"models": [{"model": PRIMARY_MODEL}, {"model": FALLBACK_MODEL}]}
-        assert asyncio.run(AIService.get_active_model()) == PRIMARY_MODEL
+        assert strong_task_model() == PRIMARY_MODEL
 
         AIService.invalidate_model_cache()
         list_models.return_value = {"models": [{"model": FALLBACK_MODEL}]}
-        assert asyncio.run(AIService.get_active_model()) == FALLBACK_MODEL
+        assert strong_task_model() == FALLBACK_MODEL
 
         # Within the TTL the cached list is used: Ollama is not asked again
         list_models.reset_mock()
-        assert asyncio.run(AIService.get_active_model()) == FALLBACK_MODEL
+        assert strong_task_model() == FALLBACK_MODEL
         assert list_models.call_count == 0
 
         # After the TTL expires availability is refreshed (dynamic recovery)
         ai_service_module._last_model_check_time = time.time() - (MODEL_CACHE_TTL_SECONDS + 5)
         list_models.return_value = {"models": [{"model": PRIMARY_MODEL}]}
-        assert asyncio.run(AIService.get_active_model()) == PRIMARY_MODEL
+        assert strong_task_model() == PRIMARY_MODEL
         assert list_models.call_count == 1
+
+
+def test_model_discovery_failure_keeps_the_last_known_list_and_routes_safely():
+    with patch.object(ollama_client, "list_models", new_callable=AsyncMock) as list_models:
+        list_models.side_effect = RuntimeError("ollama down")
+        assert asyncio.run(AIService.get_available_models()) == []
+        assert strong_task_model() == FALLBACK_MODEL          # nothing known: the fast fallback model is used
+
+        list_models.side_effect = None
+        list_models.return_value = {"models": [{"model": PRIMARY_MODEL}]}
+        assert asyncio.run(AIService.get_available_models(force_refresh=True)) == [PRIMARY_MODEL]
+        list_models.side_effect = RuntimeError("ollama down again")
+        assert asyncio.run(AIService.get_available_models(force_refresh=True)) == [PRIMARY_MODEL]
 
 
 # ---------------------------------------------------------------- [5] token-aware history

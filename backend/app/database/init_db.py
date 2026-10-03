@@ -1,10 +1,10 @@
 import logging
-from app.database.database import engine, Base
-# Import all models here to ensure Base.metadata.create_all can discover them
-from app.models.user import User
-from app.models.chat import Chat
-from app.models.message import Message
-from app.models.document import Document, DocumentChunk
+from app.database.database import engine
+# Import all models here so they are registered on Base.metadata
+from app.models.user import User  # noqa: F401
+from app.models.chat import Chat  # noqa: F401
+from app.models.message import Message  # noqa: F401
+from app.models.document import Document, DocumentChunk  # noqa: F401
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
@@ -13,8 +13,10 @@ logger = logging.getLogger(__name__)
 
 def migrate_schema(target_engine: Engine | None = None):
     """
-    Safely brings an existing SQLite database up to the current schema: adds missing columns/indexes and backfills data.
-    Every step is idempotent and non-destructive. Defaults to the application engine; tests pass their own.
+    Brings a database created before Alembic up to the baseline revision: adds missing columns/indexes and backfills
+    data. Every step is idempotent and non-destructive. Run by upgrade_database() only for such databases (which are
+    then stamped); schema changes after the baseline are Alembic revisions in backend/migrations/versions/.
+    Defaults to the application engine; tests pass their own.
     """
     eng = target_engine or engine
     try:
@@ -48,7 +50,7 @@ def migrate_schema(target_engine: Engine | None = None):
                     logger.warning(f"Could not create case-insensitive unique email index (duplicate emails exist?): {idx_err}")
 
         # Backfill chat<->document links from the legacy documents.chat_id column.
-        # chat_documents is created by create_all(); only backfill while it is still empty.
+        # chat_documents already exists (created with the other tables); only backfill while it is still empty.
         if "documents" in tables:
             doc_columns = [col["name"] for col in inspector.get_columns("documents")]
             if "chat_id" in doc_columns:
@@ -86,7 +88,8 @@ def migrate_schema(target_engine: Engine | None = None):
         logger.error(f"Schema migration error: {e}")
 
 def init_db():
+    from app.database.migrations import upgrade_database
+
     logger.info("Initializing database...")
-    Base.metadata.create_all(bind=engine)
-    migrate_schema()
+    upgrade_database(engine)
     logger.info("Database initialized successfully.")

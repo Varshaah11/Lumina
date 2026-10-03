@@ -33,8 +33,9 @@ def fits_sqlite_integer(value: int) -> bool:
     return SQLITE_INTEGER_MIN <= value <= SQLITE_INTEGER_MAX
 
 
+# hide_parameters: database errors reach the server log; their bound values (e-mails, password hashes, chat text) must not
 engine = create_engine(
-    settings.DATABASE_URL, connect_args={"check_same_thread": False}
+    settings.DATABASE_URL, connect_args={"check_same_thread": False}, hide_parameters=True
 )
 enable_sqlite_foreign_keys(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

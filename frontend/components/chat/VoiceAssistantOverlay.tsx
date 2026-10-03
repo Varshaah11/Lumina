@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback } from "react";
 import { VoiceOrb } from "./VoiceOrb";
-import { useVoiceConversation, VoiceState } from "@/hooks/useVoiceConversation";
+import { useVoiceConversation } from "@/hooks/useVoiceConversation";
 import { Message } from "@/hooks/useChat";
 import { Button } from "@/components/ui/button";
-import { X, Mic, MicOff, Square, RefreshCw, ArrowLeft, Volume2, Sparkles, Check, Copy } from "lucide-react";
+import { X, Mic, MicOff, Square, RefreshCw, ArrowLeft, Volume2, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
