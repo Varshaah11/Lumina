@@ -349,8 +349,6 @@ def test_text_without_any_content_is_rejected_by_the_extraction_pipeline():
         rag_service.extract_and_chunk_sync(b"   \n\n   ", "blank.txt")
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN BUG: chunk_document discards a fragment shorter than MIN_CHUNK_CHARS when "
-                                       "the next paragraph/sentence does not fit into the same chunk")
 @pytest.mark.parametrize("text", [
     "Short intro.\n\n" + ("Body sentence about retrieval. " * 48).strip(),       # paragraph branch
     "Alpha. " + "x" * 1495 + ". " + "y" * 1495 + ".",                             # sentence branch
@@ -359,6 +357,14 @@ def test_short_leading_fragment_is_not_dropped(text):
     chunks = rag_service.chunk_document([{"page_number": 1, "text": text}])
     leading = text.split("\n\n")[0] if "\n\n" in text else "Alpha."
     assert any(leading in c["text"] for c in chunks)
+
+
+def test_carried_short_fragment_only_slightly_exceeds_the_target_and_keeps_order():
+    intro = "Short intro."
+    body = ("Body sentence about retrieval. " * 48).strip()          # fits the target on its own, but not with the intro
+    chunks = rag_service.chunk_document([{"page_number": 1, "text": f"{intro}\n\n{body}"}])
+    assert [c["text"] for c in chunks] == [f"{intro}\n\n{body}"]
+    assert len(chunks[0]["text"]) <= TARGET_CHUNK_CHARS + MIN_CHUNK_CHARS + 2
 
 
 # ---------------------------------------------------------------- PDF / DOCX edge cases
@@ -521,7 +527,7 @@ def test_chat_scope_ignores_another_users_document_attached_to_the_chat(db_sessi
     owner, stranger = make_user(), make_user()
     chat = chat_of(owner)
     add_doc(owner, "mine.txt", [0.5], chat=chat)
-    add_doc(stranger, "theirs.txt", [1.0], chat=chat)  # a foreign link, as POST /upload can currently create
+    add_doc(stranger, "theirs.txt", [1.0], chat=chat)  # a foreign link (POST /upload no longer creates these)
     assert [r["filename"] for r in retrieve(db_session, owner, chat_id=chat.id)] == ["mine.txt"]
     assert [r["filename"] for r in retrieve(db_session, stranger, chat_id=chat.id)] == ["theirs.txt"]
 
@@ -605,8 +611,28 @@ def test_augmented_query_never_exceeds_300_characters():
     assert len(build_retrieval_query("Why?", history)) <= 300
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN BUG: build_retrieval_query truncates '<context> <question>' to 300 characters "
-                                       "from the start, so with two long prior messages the user's question is cut off")
 def test_the_users_question_survives_truncation():
     history = [msg("user", "u" * 400), msg("assistant", "v" * 400)]
     assert "How can we fix it?" in build_retrieval_query("How can we fix it?", history)
+
+
+def test_long_context_is_trimmed_to_fit_and_keeps_its_most_recent_part():
+    question = "How can we fix it?"
+    history = [msg("user", "u" * 400), msg("assistant", "v" * 400)]
+    augmented = build_retrieval_query(question, history)
+    assert len(augmented) == 300
+    assert augmented.endswith(" " + question)
+    context = augmented[: -len(question) - 1]
+    assert context.endswith("v" * 150)            # the latest message survives whole
+    assert set(context) <= {"u", "v", " "}
+
+
+def test_context_within_the_limit_is_kept_unchanged():
+    history = [msg("user", "Deadlocks happen under lock escalation."), msg("assistant", "Page 4 explains the cause.")]
+    assert build_retrieval_query("Why?", history) == "Deadlocks happen under lock escalation. Page 4 explains the cause. Why?"
+
+
+def test_question_too_long_for_any_context_is_returned_whole():
+    question = "Why does it " + "really " * 60 + "fail?"     # follow-up cue ("it"), longer than the limit
+    assert len(question) > 300
+    assert build_retrieval_query(question, [msg("assistant", "Some earlier answer")]) == question

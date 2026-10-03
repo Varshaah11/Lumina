@@ -104,8 +104,6 @@ def test_upload_requires_authentication_even_with_a_chat_id(client, db_session, 
     assert links(db_session) == before
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN BUG: POST /upload links the new document to any existing chat_id without "
-                                       "checking that the chat belongs to the caller")
 def test_upload_with_another_users_chat_id_is_rejected_without_linking(client, db_session, world):
     a, _, _, chat_b, _ = world
     before = links(db_session)
@@ -119,8 +117,6 @@ def test_upload_with_another_users_chat_id_is_rejected_without_linking(client, d
     assert db_session.query(Document).filter(Document.user_id == a.id).count() == docs_before
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN BUG: a duplicate (already stored) document is also re-linked to another "
-                                       "user's chat_id without an ownership check")
 def test_reupload_of_an_existing_document_into_another_users_chat_is_rejected(client, db_session, world):
     a, _, chat_a, chat_b, _ = world
     doc_id = upload(client, a, A_TEXT, chat_id=chat_a).json()["id"]
@@ -131,16 +127,25 @@ def test_reupload_of_an_existing_document_into_another_users_chat_is_rejected(cl
     assert (chat_b, doc_id) not in links(db_session)
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN BUG: an unknown chat_id on POST /upload fails the foreign key and returns 500, "
-                                       "while another user's chat returns 200, so the route reveals which chat ids exist")
 def test_upload_with_a_nonexistent_chat_id_is_a_404_like_another_users_chat(client, db_session, world):
     a, _, _, _, _ = world
     res = upload(client, a, A_TEXT, chat_id=987654)
     assert res.status_code == 404
 
 
+@pytest.mark.parametrize("chat_id", [2 ** 63, -(2 ** 63) - 1])
+def test_upload_with_an_out_of_range_chat_id_is_a_404_without_side_effects(client, db_session, world, chat_id):
+    a, _, _, _, _ = world
+    before = links(db_session)
+    res = upload(client, a, A_TEXT, chat_id=chat_id)
+    assert res.status_code == 404
+    assert res.json() == {"detail": "Chat not found"}
+    assert links(db_session) == before
+    assert db_session.query(Document).filter(Document.user_id == a.id).count() == 0
+
+
 def test_cross_user_link_never_exposes_the_attackers_document_to_the_victims_retrieval(client, db_session, fake_ai, world):
-    """Defence in depth that holds today even though the upload route accepts the foreign chat_id."""
+    """Defence in depth: even if a foreign link existed, retrieval only ever uses the chat owner's documents."""
     a, b, _, chat_b, _ = world
     upload(client, a, A_TEXT, chat_id=chat_b)
     client.post("/chat/stream", headers=auth(b), json={"message": "Summarise the document about tomatoes", "chat_id": chat_b})

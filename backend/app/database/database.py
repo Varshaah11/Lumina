@@ -22,6 +22,17 @@ def enable_sqlite_foreign_keys(target_engine: Engine) -> None:
             cursor.close()
 
 
+# SQLite stores INTEGER keys as signed 64-bit values: no row can have an id outside this range, and binding such a
+# Python int to a query raises OverflowError instead of simply matching nothing.
+SQLITE_INTEGER_MIN = -(2 ** 63)
+SQLITE_INTEGER_MAX = 2 ** 63 - 1
+
+
+def fits_sqlite_integer(value: int) -> bool:
+    """True when `value` can be stored in (and therefore looked up as) a SQLite INTEGER column."""
+    return SQLITE_INTEGER_MIN <= value <= SQLITE_INTEGER_MAX
+
+
 engine = create_engine(
     settings.DATABASE_URL, connect_args={"check_same_thread": False}
 )

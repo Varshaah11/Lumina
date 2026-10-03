@@ -215,9 +215,44 @@ def test_concurrent_duplicate_registration_does_not_leak_database_details(concur
     assert "UNIQUE" not in res.text and "IntegrityError" not in res.text and "INSERT" not in res.text
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN BUG: register_user does check-then-insert without handling IntegrityError; "
-                                       "the losing request of a concurrent sign-up gets a 500 instead of 'Email already registered'")
 def test_concurrent_duplicate_registration_is_reported_as_already_registered(concurrent_registration):
     res, _ = concurrent_registration
     assert res.status_code in (400, 409)
     assert res.json() == {"detail": "Email already registered"}
+
+
+def test_concurrent_registration_with_a_differently_cased_email_is_also_already_registered(db_session):
+    """The unique index is on lower(email): a racing 'Race@Example.com' and 'race@example.com' are the same account."""
+    def competing_signup_then_hash(password):
+        other = SessionLocal()
+        try:
+            other.add(User(name="First Request", email="Race@Example.com", hashed_password="first-request-hash"))
+            other.commit()
+        finally:
+            other.close()
+        return "second-request-hash"
+
+    client = TestClient(app, raise_server_exceptions=False)
+    with patch.object(auth_service_module, "get_password_hash", side_effect=competing_signup_then_hash):
+        res = client.post("/auth/register", json={"name": "Second", "email": "race@example.com", "password": "password123"})
+    assert res.status_code == 400
+    assert res.json() == {"detail": "Email already registered"}
+
+
+def test_an_integrity_error_that_is_not_a_duplicate_email_is_not_disguised(db_session):
+    """Only a real duplicate is reported as 'Email already registered'; anything else stays a generic 500."""
+    def competing_signup_then_hash(password):
+        other = SessionLocal()
+        try:
+            other.add(User(name="First Request", email="race@example.com", hashed_password="first-request-hash"))
+            other.commit()
+        finally:
+            other.close()
+        return "second-request-hash"
+
+    client = TestClient(app, raise_server_exceptions=False)
+    with patch.object(auth_service_module, "get_password_hash", side_effect=competing_signup_then_hash), \
+         patch.object(auth_service_module, "_email_taken", return_value=False):
+        res = client.post("/auth/register", json={"name": "Second", "email": "race@example.com", "password": "password123"})
+    assert res.status_code == 500
+    assert res.json() == {"detail": "Internal server error"}

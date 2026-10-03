@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.user import UserResponse
 from app.api.dependencies import get_current_user, get_db
+from app.services.chat_service import chat_service
 from app.services.rag_service import rag_service, DocumentContentError
 from app.services import upload_validation as uv
 
@@ -34,9 +35,15 @@ async def upload_file_endpoint(
     chunk, generate embeddings, and persist in SQLite RAG store.
     Requires authentication. Size limit: MAX_UPLOAD_SIZE_MB.
 
+    A chat_id must name a chat owned by the caller (404 "Chat not found" otherwise, as on the other chat routes).
+    It is checked first, so a rejected request reads, stores and links nothing, for new and duplicate documents alike.
+
     Everything up to process_and_store_document is cheap validation that runs before any extraction,
     chunking, embedding or database write. File name and Content-Type are hints only; the bytes must match the type.
     """
+    if chat_id and not chat_service.get_owned_chat(chat_id, current_user.id, db):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
     try:
         filename = uv.sanitize_filename(file.filename)      # also strips any directory components
         ext = uv.get_extension(filename)

@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.schemas.user import UserCreate
@@ -16,14 +17,14 @@ def _dummy_hash() -> str:
         _DUMMY_HASH = get_password_hash("lumina-dummy-password")
     return _DUMMY_HASH
 
+def _email_taken(db: Session, email: str) -> bool:
+    return db.query(User).filter(func.lower(User.email) == email).first() is not None
+
 def register_user(db: Session, user_data: UserCreate) -> User:
-    # Check if user exists
-    existing_user = db.query(User).filter(func.lower(User.email) == user_data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+    email_taken = HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    # Fast path for the common case; the unique index on lower(email) is what actually guarantees uniqueness
+    if _email_taken(db, user_data.email):
+        raise email_taken
     
     # Create new user
     hashed_password = get_password_hash(user_data.password)
@@ -34,7 +35,14 @@ def register_user(db: Session, user_data: UserCreate) -> User:
     )
     
     db.add(new_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent registration for the same e-mail was inserted between the check above and this commit
+        db.rollback()
+        if _email_taken(db, user_data.email):
+            raise email_taken
+        raise
     db.refresh(new_user)
     return new_user
 

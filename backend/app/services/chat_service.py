@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
-from app.database.database import SessionLocal
+from app.database.database import SessionLocal, fits_sqlite_integer
 from app.ai.service import ai_service
 from app.ai.router import intelligence_router
 from app.services.rag_service import rag_service
@@ -106,6 +106,8 @@ def select_token_bounded_history(messages: list[Message], max_tokens: int = MAX_
     selected.reverse()
     return selected
 
+MAX_RETRIEVAL_QUERY_CHARS = 300
+
 def build_retrieval_query(current_query: str, recent_messages: list[Message]) -> str:
     """
     Constructs an augmented retrieval query for follow-up questions
@@ -144,8 +146,12 @@ def build_retrieval_query(current_query: str, recent_messages: list[Message]) ->
                 break
 
     if context_snippets:
-        augmented = f"{' '.join(reversed(context_snippets))} {current_query}"
-        return augmented[:300]
+        # The question is never cut: only the context is trimmed to fit, keeping its most recent part
+        budget = MAX_RETRIEVAL_QUERY_CHARS - len(current_query) - 1
+        if budget <= 0:
+            return current_query
+        context = " ".join(reversed(context_snippets))[-budget:].lstrip()
+        return f"{context} {current_query}" if context else current_query
 
     return current_query
 
@@ -168,13 +174,13 @@ class ChatService:
             db.refresh(new_chat)
             chat_id = new_chat.id
         else:
-            chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
+            chat = ChatService.get_owned_chat(chat_id, current_user.id, db)
             if not chat:
                 yield f"data: {json.dumps({'error': 'Chat not found'})}\n\n"
                 return
 
         # If a document_id was provided, link it to this chat
-        if request.document_id:
+        if request.document_id and fits_sqlite_integer(request.document_id):
             doc = (
                 db.query(Document)
                 .filter(Document.id == request.document_id, Document.user_id == current_user.id)
@@ -287,11 +293,20 @@ class ChatService:
             schedule_title_generation(chat_id, request.message, title)
 
     @staticmethod
+    def get_owned_chat(chat_id: int, user_id: int, db: Session):
+        """The chat if it exists and belongs to the user, else None (an id SQLite cannot store matches no chat)."""
+        if not fits_sqlite_integer(chat_id):
+            return None
+        return db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+
+    @staticmethod
     def get_user_chats(user_id: int, db: Session):
         return db.query(Chat).filter(Chat.user_id == user_id).order_by(Chat.updated_at.desc()).all()
 
     @staticmethod
     def get_chat_history(chat_id: int, user_id: int, db: Session):
+        if not fits_sqlite_integer(chat_id):
+            return None
         return db.query(Chat).options(joinedload(Chat.messages)).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
 
     @staticmethod
@@ -299,7 +314,7 @@ class ChatService:
         """
         Deletes a chat and all associated messages and document links for a user.
         """
-        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+        chat = ChatService.get_owned_chat(chat_id, user_id, db)
         if not chat:
             return False
         doc_ids = [d.id for d in chat.documents]
@@ -328,7 +343,7 @@ class ChatService:
         if len(cleaned_title) > 255:
             raise ValueError("Title cannot exceed 255 characters")
 
-        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+        chat = ChatService.get_owned_chat(chat_id, user_id, db)
         if not chat:
             return None
         chat.title = cleaned_title
@@ -348,7 +363,7 @@ class ChatService:
         Maintains RAG retrieval and document context if the chat has associated documents.
         Preserves voice mode behavior if is_voice is True.
         """
-        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
+        chat = ChatService.get_owned_chat(chat_id, current_user.id, db)
         if not chat:
             yield f"data: {json.dumps({'error': 'Chat not found'})}\n\n"
             return

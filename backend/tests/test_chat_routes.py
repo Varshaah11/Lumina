@@ -208,12 +208,44 @@ def test_unknown_chat_id_is_a_404(api_client, owner, chat_id):
     assert api_client.delete(f"/chat/{chat_id}", headers=headers).status_code == 404
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN BUG: ids outside SQLite's 64-bit INTEGER range raise OverflowError -> 500")
 @pytest.mark.parametrize("method", ["get", "patch", "delete"])
 def test_chat_id_beyond_64_bit_range_is_not_a_server_error(safe_client, owner, method):
     kwargs = {"json": {"title": "x"}} if method == "patch" else {}
     res = getattr(safe_client, method)(f"/chat/{2 ** 63}", headers=auth(owner), **kwargs)
     assert res.status_code in (404, 422)
+
+
+OUT_OF_RANGE_IDS = [2 ** 63, 10 ** 20, -(2 ** 63) - 1]
+
+
+@pytest.mark.parametrize("chat_id", OUT_OF_RANGE_IDS)
+def test_out_of_range_chat_id_is_an_ordinary_404(safe_client, owner, chat_id):
+    headers = auth(owner)
+    for res in (safe_client.get(f"/chat/{chat_id}", headers=headers),
+                safe_client.patch(f"/chat/{chat_id}", json={"title": "x"}, headers=headers),
+                safe_client.delete(f"/chat/{chat_id}", headers=headers)):
+        assert res.status_code == 404
+        assert res.json() == {"detail": "Chat not found"}
+
+
+@pytest.mark.parametrize("chat_id", OUT_OF_RANGE_IDS)
+def test_out_of_range_chat_id_on_the_sse_routes_yields_the_not_found_event(safe_client, db_session, fake_ai, owner, chat_id):
+    stream = safe_client.post("/chat/stream", json={"message": "hi", "chat_id": chat_id}, headers=auth(owner))
+    regen = safe_client.post(f"/chat/{chat_id}/regenerate", headers=auth(owner))
+    for res in (stream, regen):
+        assert res.status_code == 200
+        assert sse_events(res.text) == [{"error": "Chat not found"}]
+    assert fake_ai.calls == []
+    assert db_session.query(Chat).count() == 0
+
+
+def test_out_of_range_document_id_is_ignored_like_an_unknown_document(safe_client, db_session, fake_ai, owner):
+    res = safe_client.post("/chat/stream", json={"message": "Summarise this document", "document_id": 2 ** 63},
+                           headers=auth(owner))
+    events = sse_events(res.text)
+    assert "chat_id" in events[0]
+    assert [e["token"] for e in events[1:]] == TOKENS
+    assert fake_ai.calls[0]["has_document"] is False
 
 
 @pytest.mark.parametrize("payload", [

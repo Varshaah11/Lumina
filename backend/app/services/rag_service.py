@@ -207,7 +207,8 @@ class RAGService:
                                 overlap = current_chunk[-OVERLAP_CHARS:] if len(current_chunk) > OVERLAP_CHARS else ""
                                 current_chunk = f"{overlap} {s}".strip()
                             else:
-                                current_chunk = s
+                                # Too short to stand alone: carry it into the next chunk instead of dropping it
+                                current_chunk = f"{current_chunk} {s}".strip()
                 else:
                     if len(current_chunk) + len(p) + 2 <= TARGET_CHUNK_CHARS:
                         current_chunk = f"{current_chunk}\n\n{p}".strip() if current_chunk else p
@@ -217,7 +218,8 @@ class RAGService:
                             overlap = current_chunk[-OVERLAP_CHARS:] if len(current_chunk) > OVERLAP_CHARS else ""
                             current_chunk = f"{overlap}\n\n{p}".strip()
                         else:
-                            current_chunk = p
+                            # Too short to stand alone: carry it into the next chunk instead of dropping it
+                            current_chunk = f"{current_chunk}\n\n{p}".strip()
 
             if current_chunk and len(current_chunk) >= MIN_CHUNK_CHARS:
                 chunks.append({"page_number": page_num, "text": current_chunk})
