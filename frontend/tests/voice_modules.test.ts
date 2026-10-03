@@ -1,18 +1,16 @@
 /**
  * Unit tests for the extracted voice modules (no React): TtsPipeline queue/playback and SttController. They pin the
  * queue guarantees the refactor relies on: strict ordering, bounded in-flight requests, no duplicates, no stale-turn
- * audio, no restarts after stop. Run from frontend/:
- *   OUT=$(mktemp -d) && npx tsc -p scripts/tsconfig.test.json --outDir $OUT \
- *     && cp scripts/next_navigation_stub.js $OUT/scripts/ && NODE_PATH=$PWD/node_modules node $OUT/scripts/test_voice_modules.js
+ * audio, no restarts after stop. Migrated 1:1 from the former custom harness scripts/test_voice_modules.ts (23 checks).
  */
-import { FakeRecognition } from "./mic_test_support";
-import { FakeAudio, FakeClock, resetVoiceShims, tts as ttsFetch, urls } from "./voice_test_support";
-import assert from "node:assert/strict";
-import { extractStreamingTTSChunks, isMeaningfulSpeechChunk } from "../lib/voice/chunker";
-import { MAX_IN_FLIGHT_TTS, TtsPipeline, type TtsPipelineHost } from "../lib/voice/ttsPipeline";
-import { SttController, type SttHost } from "../lib/voice/sttController";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { extractStreamingTTSChunks, isMeaningfulSpeechChunk } from "@/lib/voice/chunker";
+import { MAX_IN_FLIGHT_TTS, TtsPipeline, type TtsPipelineHost } from "@/lib/voice/ttsPipeline";
+import { SttController, type SttHost } from "@/lib/voice/sttController";
+import { installFakeClock } from "./support/fakeClock";
+import { FakeRecognition, installFakeSpeechRecognition } from "./support/speechRecognition";
+import { FakeAudio, installVoiceDoubles, tts as ttsFetch, urls } from "./support/voiceDoubles";
 
-const clock = new FakeClock();
 const tick = () => new Promise<void>((r) => setImmediate(r));
 async function settle() { for (let i = 0; i < 5; i++) await tick(); }
 
@@ -30,60 +28,51 @@ function makePipeline(active = { value: true }) {
   return { pipeline, events, active };
 }
 
-let passed = 0;
-const failures: string[] = [];
-async function test(name: string, fn: () => Promise<void> | void) {
-  FakeRecognition.instances.length = 0;
-  resetVoiceShims();
-  clock.install();
-  const log = console.log; const warn = console.warn; const err = console.error;
-  console.log = () => {}; console.warn = () => {}; console.error = () => {};
-  let error: Error | null = null;
-  try { await fn(); } catch (e) { error = e as Error; }
-  clock.uninstall();
-  console.log = log; console.warn = warn; console.error = err;
-  if (error) { failures.push(name); console.log(`  [FAIL] ${name}\n         ${error.message.split("\n")[0]}`); }
-  else { passed++; console.log(`  [PASS] ${name}`); }
-}
+beforeEach(() => {
+  installFakeSpeechRecognition();
+  installVoiceDoubles();
+  installFakeClock();
+  for (const level of ["log", "warn", "error"] as const) vi.spyOn(console, level).mockImplementation(() => {});
+});
 
-async function main() {
-  console.log("\n=== Voice module tests ===");
+describe("voice modules", () => {
+
 
   // ------------------------------------------------------------------ chunker
-  await test("chunker: meaningful-chunk rules", () => {
-    assert.equal(isMeaningfulSpeechChunk(""), false);
-    assert.equal(isMeaningfulSpeechChunk("ab"), false);
-    assert.equal(isMeaningfulSpeechChunk("12 34"), false);
-    assert.equal(isMeaningfulSpeechChunk("Hello there."), true);
+  it("chunker: meaningful-chunk rules", () => {
+    expect(isMeaningfulSpeechChunk("")).toBe(false);
+    expect(isMeaningfulSpeechChunk("ab")).toBe(false);
+    expect(isMeaningfulSpeechChunk("12 34")).toBe(false);
+    expect(isMeaningfulSpeechChunk("Hello there.")).toBe(true);
   });
 
-  await test("chunker: incremental extraction never repeats or drops text", () => {
+  it("chunker: incremental extraction never repeats or drops text", () => {
     let processed = 0;
     const out: string[] = [];
     for (let upto = 10; upto <= REPLY.length + 10; upto += 7) {
       const isComplete = upto >= REPLY.length;
       for (const c of extractStreamingTTSChunks(REPLY.slice(0, upto), processed, isComplete)) { processed += c.rawLength; out.push(c.text); }
     }
-    assert.equal(out.join(" ").replace(/\s+/g, " "), REPLY);
+    expect(out.join(" ").replace(/\s+/g, " ")).toBe(REPLY);
   });
 
   // ------------------------------------------------------------------ TTS pipeline: ordering & bounds
-  await test("pipeline: never more than MAX_IN_FLIGHT_TTS requests at once and strictly ordered playback", async () => {
+  it("pipeline: never more than MAX_IN_FLIGHT_TTS requests at once and strictly ordered playback", async () => {
     const { pipeline, events } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText(REPLY, true);
-    assert.equal(ttsFetch.calls.length, MAX_IN_FLIGHT_TTS);
-    assert.equal(pipeline.inFlight, MAX_IN_FLIGHT_TTS);
+    expect(ttsFetch.calls.length).toBe(MAX_IN_FLIGHT_TTS);
+    expect(pipeline.inFlight).toBe(MAX_IN_FLIGHT_TTS);
     // answer the second request first
     ttsFetch.calls[1].respond();
     await settle();
-    assert.equal(FakeAudio.instances.length, 0);
+    expect(FakeAudio.instances.length).toBe(0);
     ttsFetch.calls[0].respond();
     await settle();
-    assert.equal(FakeAudio.instances.length, 1);
-    assert.equal(events[0], "start");
+    expect(FakeAudio.instances.length).toBe(1);
+    expect(events[0]).toBe("start");
     // the third chunk is only requested once a slot frees up
-    assert.ok(ttsFetch.calls.length >= 3);
+    expect(ttsFetch.calls.length >= 3).toBeTruthy();
     // play everything to the end, in order
     const requested: string[] = [];
     for (let guard = 0; guard < 10 && events[events.length - 1] !== "done"; guard++) {
@@ -94,49 +83,49 @@ async function main() {
       await settle();
     }
     for (const c of ttsFetch.calls) requested.push(c.text);
-    assert.equal(requested.join(" ").replace(/\s+/g, " "), REPLY);
-    assert.equal(events[events.length - 1], "done");
-    assert.equal(events.filter((e) => e === "done").length, 1, "completion is reported exactly once");
-    assert.equal(FakeAudio.instances.length, ttsFetch.calls.length, "one audio element per chunk, no duplicates");
-    assert.equal(new Set(FakeAudio.instances.map((a) => a.src)).size, FakeAudio.instances.length);
+    expect(requested.join(" ").replace(/\s+/g, " ")).toBe(REPLY);
+    expect(events[events.length - 1]).toBe("done");
+    expect(events.filter((e) => e === "done").length, "completion is reported exactly once").toBe(1);
+    expect(FakeAudio.instances.length, "one audio element per chunk, no duplicates").toBe(ttsFetch.calls.length);
+    expect(new Set(FakeAudio.instances.map((a) => a.src)).size).toBe(FakeAudio.instances.length);
   });
 
-  await test("pipeline: feeding the same growing text repeatedly never re-queues a chunk (no duplicate audio)", async () => {
+  it("pipeline: feeding the same growing text repeatedly never re-queues a chunk (no duplicate audio)", async () => {
     const { pipeline } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText(REPLY.slice(0, 60), false);
     const first = ttsFetch.calls.length;
     for (let i = 0; i < 5; i++) pipeline.feedAssistantText(REPLY.slice(0, 60), false);
-    assert.equal(ttsFetch.calls.length, first);
+    expect(ttsFetch.calls.length).toBe(first);
     pipeline.feedAssistantText(REPLY, true);
     for (let i = 0; i < 5; i++) pipeline.feedAssistantText(REPLY, true);
     const texts = ttsFetch.calls.map((c) => c.text);
-    assert.equal(new Set(texts).size, texts.length, "every chunk requested at most once");
+    expect(new Set(texts).size, "every chunk requested at most once").toBe(texts.length);
   });
 
-  await test("pipeline: nothing is fetched while voice mode is not active", () => {
+  it("pipeline: nothing is fetched while voice mode is not active", () => {
     const { pipeline } = makePipeline({ value: false });
     pipeline.startTurn();
     pipeline.feedAssistantText(REPLY, true);
-    assert.equal(ttsFetch.calls.length, 0);
+    expect(ttsFetch.calls.length).toBe(0);
   });
 
-  await test("pipeline: a failed chunk is skipped, later chunks still play, completion still fires", async () => {
+  it("pipeline: a failed chunk is skipped, later chunks still play, completion still fires", async () => {
     const { pipeline, events } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText("Rivers carry water from the mountains down to the sea. They shape valleys over thousands of years.", true);
-    assert.equal(ttsFetch.calls.length, 2);
+    expect(ttsFetch.calls.length).toBe(2);
     ttsFetch.calls[0].fail(500);
     ttsFetch.calls[1].respond();
     await settle();
-    assert.equal(FakeAudio.instances.length, 1);
+    expect(FakeAudio.instances.length).toBe(1);
     FakeAudio.instances[0].fireEnded();
     await settle();
-    assert.equal(events[events.length - 1], "done");
+    expect(events[events.length - 1]).toBe("done");
   });
 
   // ------------------------------------------------------------------ TTS pipeline: stale data & cancellation
-  await test("pipeline: a response from a previous turn can never enter the new turn's queue (sequence numbers restart per turn)", async () => {
+  it("pipeline: a response from a previous turn can never enter the new turn's queue (sequence numbers restart per turn)", async () => {
     const { pipeline, events } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText("Rivers carry water from the mountains down to the sea.", true);
@@ -145,32 +134,32 @@ async function main() {
     pipeline.startTurn();                     // turn B: its first chunk is ALSO sequence #0
     pipeline.feedAssistantText("Lakes are large bodies of still fresh water on land.", true);
     const newCall = ttsFetch.calls[ttsFetch.calls.length - 1];
-    assert.notEqual(oldCall, newCall);
-    assert.ok(oldCall.signal.aborted, "old request aborted");
+    expect(oldCall).not.toBe(newCall);
+    expect(oldCall.signal.aborted, "old request aborted").toBeTruthy();
     oldCall.respond();                        // arrives late (ignored: already rejected by abort)
     await settle();
-    assert.equal(FakeAudio.instances.length, 0, "stale audio must not play");
+    expect(FakeAudio.instances.length, "stale audio must not play").toBe(0);
     newCall.respond();
     await settle();
-    assert.equal(FakeAudio.instances.length, 1);
-    assert.equal(FakeAudio.instances[0].src, urls.created[urls.created.length - 1]);
-    assert.deepEqual(events, ["start"]);
+    expect(FakeAudio.instances.length).toBe(1);
+    expect(FakeAudio.instances[0].src).toBe(urls.created[urls.created.length - 1]);
+    expect(events).toStrictEqual(["start"]);
   });
 
-  await test("pipeline: a response that resolves after the turn was invalidated (before any abort took effect) is discarded", async () => {
+  it("pipeline: a response that resolves after the turn was invalidated (before any abort took effect) is discarded", async () => {
     const { pipeline } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText("Rivers carry water from the mountains down to the sea.", true);
     pipeline.invalidateTurn();                // invalidated without cleanup(): only the turn guard protects us
     ttsFetch.calls[0].respond();
     await settle();
-    assert.equal(FakeAudio.instances.length, 0);
-    assert.equal(urls.created.length, 0, "no object URL created for an invalidated turn");
-    assert.equal(pipeline.inFlight, 0);
-    assert.equal(pipeline.audioReadyDepth, 0);
+    expect(FakeAudio.instances.length).toBe(0);
+    expect(urls.created.length, "no object URL created for an invalidated turn").toBe(0);
+    expect(pipeline.inFlight).toBe(0);
+    expect(pipeline.audioReadyDepth).toBe(0);
   });
 
-  await test("pipeline: late 'ended' of an invalidated chunk does not advance the new turn", async () => {
+  it("pipeline: late 'ended' of an invalidated chunk does not advance the new turn", async () => {
     const { pipeline, events } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText("Rivers carry water from the mountains down to the sea. They shape valleys over thousands of years.", true);
@@ -182,11 +171,11 @@ async function main() {
     pipeline.startTurn();
     endedHandler?.();                         // a stale ended event arriving after the interruption
     await settle();
-    assert.equal(FakeAudio.instances.length, 1);
-    assert.equal(events.includes("done"), false);
+    expect(FakeAudio.instances.length).toBe(1);
+    expect(events.includes("done")).toBe(false);
   });
 
-  await test("pipeline: cleanup aborts requests, pauses audio, revokes URLs, empties queues and is idempotent", async () => {
+  it("pipeline: cleanup aborts requests, pauses audio, revokes URLs, empties queues and is idempotent", async () => {
     const { pipeline } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText(REPLY, true);
@@ -195,20 +184,20 @@ async function main() {
     const audio = FakeAudio.instances[0];
     const pending = ttsFetch.calls.filter((c) => !c.settled);
     pipeline.cleanup();
-    assert.ok(pending.every((c) => c.signal.aborted));
-    assert.ok(audio.pauseCalls >= 1);
-    assert.equal(audio.onended, null);
-    assert.ok(urls.revoked.includes(audio.src));
-    assert.equal(pipeline.isPlaying, false);
-    assert.equal(pipeline.inFlight, 0);
-    assert.equal(pipeline.audioReadyDepth, 0);
-    assert.equal(pipeline.currentChunkText, "");
+    expect(pending.every((c) => c.signal.aborted)).toBeTruthy();
+    expect(audio.pauseCalls >= 1).toBeTruthy();
+    expect(audio.onended).toBe(null);
+    expect(urls.revoked.includes(audio.src)).toBeTruthy();
+    expect(pipeline.isPlaying).toBe(false);
+    expect(pipeline.inFlight).toBe(0);
+    expect(pipeline.audioReadyDepth).toBe(0);
+    expect(pipeline.currentChunkText).toBe("");
     const revoked = urls.revoked.length;
     pipeline.cleanup();
-    assert.equal(urls.revoked.length, revoked, "second cleanup revokes nothing more");
+    expect(urls.revoked.length, "second cleanup revokes nothing more").toBe(revoked);
   });
 
-  await test("pipeline: voice mode closing mid-synthesis discards results", async () => {
+  it("pipeline: voice mode closing mid-synthesis discards results", async () => {
     const active = { value: true };
     const { pipeline } = makePipeline(active);
     pipeline.startTurn();
@@ -216,25 +205,25 @@ async function main() {
     active.value = false;
     ttsFetch.calls.forEach((c) => c.respond());
     await settle();
-    assert.equal(FakeAudio.instances.length, 0);
-    assert.equal(pipeline.inFlight, 0, "in-flight counter released for discarded responses");
+    expect(FakeAudio.instances.length).toBe(0);
+    expect(pipeline.inFlight, "in-flight counter released for discarded responses").toBe(0);
   });
 
-  await test("pipeline: only one chunk plays at a time", async () => {
+  it("pipeline: only one chunk plays at a time", async () => {
     const { pipeline } = makePipeline();
     pipeline.startTurn();
     pipeline.feedAssistantText(REPLY, true);
     ttsFetch.calls.forEach((c) => c.respond());
     await settle();
-    assert.equal(FakeAudio.instances.filter((a) => a.playCalls > 0 && a.onended).length, 1);
+    expect(FakeAudio.instances.filter((a) => a.playCalls > 0 && a.onended).length).toBe(1);
   });
 
-  await test("pipeline: speech synthesis fallback is cancelled on interrupt", () => {
+  it("pipeline: speech synthesis fallback is cancelled on interrupt", () => {
     const calls: string[] = [];
     (window as unknown as { speechSynthesis: { cancel(): void } }).speechSynthesis = { cancel: () => calls.push("cancel") };
     try {
       makePipeline().pipeline.interrupt();
-      assert.deepEqual(calls, ["cancel"]);
+      expect(calls).toStrictEqual(["cancel"]);
     } finally {
       delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
     }
@@ -259,137 +248,132 @@ async function main() {
   }
   const rec = () => FakeRecognition.instances[FakeRecognition.instances.length - 1];
 
-  await test("stt: constructing the controller never touches the microphone (and works with no host attached)", () => {
+  it("stt: constructing the controller never touches the microphone (and works with no host attached)", () => {
     makeStt();
     const bare = new SttController();
     bare.stop();
-    assert.equal(bare.isListening, false);
-    assert.equal(FakeRecognition.instances.length, 0);
+    expect(bare.isListening).toBe(false);
+    expect(FakeRecognition.instances.length).toBe(0);
   });
 
-  await test("stt: begin() starts exactly one continuous recognizer; start/end/error events reach the host", () => {
+  it("stt: begin() starts exactly one continuous recognizer; start/end/error events reach the host", () => {
     const { stt, log } = makeStt();
     stt.begin();
-    assert.equal(FakeRecognition.instances.length, 1);
-    assert.equal(rec().startCalls, 1);
-    assert.equal(rec().continuous, true);
-    assert.equal(stt.isStarting, true);
+    expect(FakeRecognition.instances.length).toBe(1);
+    expect(rec().startCalls).toBe(1);
+    expect(rec().continuous).toBe(true);
+    expect(stt.isStarting).toBe(true);
     rec().fireStart();
-    assert.deepEqual(log.slice(-2), ["mic:true", "started"]);
-    assert.equal(stt.isListening, true);
-    assert.equal(stt.isStarting, false);
+    expect(log.slice(-2)).toStrictEqual(["mic:true", "started"]);
+    expect(stt.isListening).toBe(true);
+    expect(stt.isStarting).toBe(false);
     rec().fireError("network");
-    assert.equal(log[log.length - 1], "error:network");
-    assert.equal(stt.isListening, false);
+    expect(log[log.length - 1]).toBe("error:network");
+    expect(stt.isListening).toBe(false);
     rec().fireEnd();
-    assert.equal(log[log.length - 1], `ended:${stt.sessionId}`);
-    assert.equal(log[log.length - 2], "mic:false");
+    expect(log[log.length - 1]).toBe(`ended:${stt.sessionId}`);
+    expect(log[log.length - 2]).toBe("mic:false");
   });
 
-  await test("stt: no-speech is benign (no error callback, still listening)", () => {
+  it("stt: no-speech is benign (no error callback, still listening)", () => {
     const { stt, log } = makeStt();
     stt.begin(); rec().fireStart();
     rec().fireError("no-speech");
-    assert.equal(log.some((l) => l.startsWith("error:")), false);
-    assert.equal(stt.isListening, true);
+    expect(log.some((l) => l.startsWith("error:"))).toBe(false);
+    expect(stt.isListening).toBe(true);
   });
 
-  await test("stt: stop() releases the recognizer, detaches handlers, and late events are ignored", () => {
+  it("stt: stop() releases the recognizer, detaches handlers, and late events are ignored", () => {
     const { stt, log } = makeStt();
     stt.begin(); const r = rec(); r.fireStart();
     stt.stop();
-    assert.ok(r.abortCalls >= 1);
-    assert.equal(r.onend, null); assert.equal(r.onresult, null); assert.equal(r.onerror, null); assert.equal(r.onstart, null);
-    assert.equal(stt.hasRecognition, false);
-    assert.equal(stt.isListening, false);
+    expect(r.abortCalls >= 1).toBeTruthy();
+    expect(r.onend).toBe(null); expect(r.onresult).toBe(null); expect(r.onerror).toBe(null); expect(r.onstart).toBe(null);
+    expect(stt.hasRecognition).toBe(false);
+    expect(stt.isListening).toBe(false);
     const before = log.length;
     r.fireEnd?.();
-    assert.equal(log.length, before, "no host callbacks after stop");
+    expect(log.length, "no host callbacks after stop").toBe(before);
   });
 
-  await test("stt: events from a replaced recognizer (older session) are ignored", () => {
+  it("stt: events from a replaced recognizer (older session) are ignored", () => {
     const { stt, log, transcripts } = makeStt();
     stt.begin(); const first = rec();
     stt.begin(); const second = rec();
-    assert.notEqual(first, second);
-    assert.ok(first.abortCalls >= 1);
+    expect(first).not.toBe(second);
+    expect(first.abortCalls >= 1).toBeTruthy();
     const sessionBefore = stt.sessionId;
     // simulate the browser delivering events from the old instance anyway (handlers were detached, so call stale ones directly)
     first.onstart?.(); first.onend?.();
-    assert.equal(log.includes("started"), false);
-    assert.equal(log.includes(`ended:${sessionBefore - 1}`), false);
-    assert.equal(transcripts.length, 0);
+    expect(log.includes("started")).toBe(false);
+    expect(log.includes(`ended:${sessionBefore - 1}`)).toBe(false);
+    expect(transcripts.length).toBe(0);
   });
 
-  await test("stt: invalidateSession() makes the live recognizer's handlers stale", () => {
+  it("stt: invalidateSession() makes the live recognizer's handlers stale", () => {
     const { stt, log } = makeStt();
     stt.begin(); const r = rec(); r.fireStart();
     stt.invalidateSession();
     const before = log.length;
     r.fireEnd();
-    assert.equal(log.length, before);
+    expect(log.length).toBe(before);
   });
 
-  await test("stt: transcript assembly is isolated per turn", () => {
+  it("stt: transcript assembly is isolated per turn", () => {
     const { stt, transcripts } = makeStt();
     stt.begin(); rec().fireStart();
     rec().fireResult([{ transcript: "hello", isFinal: true }]);
-    assert.equal(stt.latestTranscript, "hello");
+    expect(stt.latestTranscript).toBe("hello");
     stt.beginNextTurn();                        // utterance submitted
-    assert.equal(stt.latestTranscript, "");
+    expect(stt.latestTranscript).toBe("");
     rec().fireResult([{ transcript: "hello", isFinal: true }, { transcript: "again", isFinal: false }]);
-    assert.equal(stt.latestTranscript, "again", "results before the turn boundary are excluded");
+    expect(stt.latestTranscript, "results before the turn boundary are excluded").toBe("again");
     stt.resetTurn();
     rec().fireResult([{ transcript: "hello", isFinal: true }, { transcript: "again", isFinal: true }]);
-    assert.equal(stt.latestTranscript, "helloagain");
-    assert.deepEqual(transcripts.map((t) => t[0]), ["hello", "again", "helloagain"]);
+    expect(stt.latestTranscript).toBe("helloagain");
+    expect(transcripts.map((t) => t[0])).toStrictEqual(["hello", "again", "helloagain"]);
   });
 
-  await test("stt: silence timer fires once, is replaced when re-armed and cleared by stop()", () => {
+  it("stt: silence timer fires once, is replaced when re-armed and cleared by stop()", () => {
     const { stt } = makeStt();
     let fired = 0;
     stt.armSilenceTimer(1500, () => fired++);
     stt.armSilenceTimer(1500, () => fired++);
-    clock.advance(1499);
-    assert.equal(fired, 0);
-    clock.advance(1);
-    assert.equal(fired, 1);
+    vi.advanceTimersByTime(1499);
+    expect(fired).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(fired).toBe(1);
     stt.armSilenceTimer(1500, () => fired++);
     stt.stop();
-    clock.advance(5000);
-    assert.equal(fired, 1);
+    vi.advanceTimersByTime(5000);
+    expect(fired).toBe(1);
   });
 
-  await test("stt: unsupported browser and a throwing start() are reported to the host", () => {
+  it("stt: unsupported browser and a throwing start() are reported to the host", () => {
     const w = window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown };
     const saved = [w.SpeechRecognition, w.webkitSpeechRecognition];
     w.SpeechRecognition = undefined; w.webkitSpeechRecognition = undefined;
     const a = makeStt();
     a.stt.begin();
     [w.SpeechRecognition, w.webkitSpeechRecognition] = saved;
-    assert.deepEqual(a.log, ["unsupported"]);
+    expect(a.log).toStrictEqual(["unsupported"]);
     const original = FakeRecognition.prototype.start;
     FakeRecognition.prototype.start = function () { throw new Error("blocked"); };
     try {
       const b = makeStt();
       b.stt.begin();
-      assert.equal(b.log.includes("startFailed"), true);
-      assert.equal(b.stt.isStarting, false);
-      assert.equal(b.stt.isListening, false);
+      expect(b.log.includes("startFailed")).toBe(true);
+      expect(b.stt.isStarting).toBe(false);
+      expect(b.stt.isListening).toBe(false);
     } finally {
       FakeRecognition.prototype.start = original;
     }
   });
 
-  await test("stt: simulateResult feeds the live recognizer", () => {
+  it("stt: simulateResult feeds the live recognizer", () => {
     const { stt, transcripts } = makeStt();
     stt.begin(); rec().fireStart();
     stt.simulateResult("test phrase");
-    assert.equal(transcripts[0][0], "test phrase");
+    expect(transcripts[0][0]).toBe("test phrase");
   });
-
-  console.log(`\n${passed} passed, ${failures.length} failed`);
-  process.exit(failures.length ? 1 : 0);
-}
-
-main();
+});

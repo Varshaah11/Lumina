@@ -47,3 +47,54 @@ def pytest_collection_finish(session):
     reason = _unsafe_database_reason(engine.url)
     if reason:
         pytest.exit(f"Refusing to run tests: the application database is unsafe ({reason}).", returncode=3)
+
+
+# ------------------------------------------------------------------------------------------------- shared fixtures
+# Application modules are imported inside the fixtures (never at module import time), so the environment above is
+# always in place before the app reads its settings.
+
+@pytest.fixture
+def db_session():
+    """A fresh schema in the throwaway test database (same reset the unittest classes do in setUp) and a session on it."""
+    from app.database.database import Base, SessionLocal, engine
+    from app.database.init_db import init_db
+
+    Base.metadata.drop_all(bind=engine)
+    init_db()
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
+def make_user(db_session):
+    """Factory for users in the throwaway database: unique deterministic emails, cleaned up with the schema."""
+    import itertools
+
+    from app.models.user import User
+
+    counter = itertools.count(1)
+
+    def _make(name: str = "Test User", email: str | None = None, hashed_password: str = "not-a-real-hash", **fields):
+        user = User(name=name, email=email or f"user{next(counter)}@example.com", hashed_password=hashed_password, **fields)
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+        return user
+
+    return _make
+
+
+@pytest.fixture
+def api_client(db_session):
+    """FastAPI TestClient for the real app on a fresh test database; dependency overrides are always cleared."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()

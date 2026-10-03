@@ -75,16 +75,20 @@ Lumina/
 │   │   ├── models/           # DB schema definitions
 │   │   ├── schemas/          # Pydantic validation schemas
 │   │   └── services/         # Business logic layer
+│   ├── tests/                # pytest suite (conftest.py, pytest.ini alongside)
 │   ├── requirements.txt      # Python dependencies
+│   ├── requirements-dev.txt  # Test dependencies (pytest)
 │   └── lumina.db             # SQLite database (auto-generated)
 │
 ├── frontend/                 # Next.js Application
 │   ├── app/                  # App router, globals, and pages
 │   ├── components/           # Reusable UI components
 │   ├── public/               # Static assets
+│   ├── tests/                # Vitest suite (vitest.config.mts alongside)
 │   ├── package.json          # Node dependencies
 │   └── tailwind.config.ts    # Tailwind CSS configuration
 │
+├── .github/workflows/ci.yml  # CI: backend + frontend tests
 ├── .gitignore                # Git ignore rules
 └── README.md                 # Project documentation
 ```
@@ -140,6 +144,71 @@ Lumina/
    npm run dev
    ```
    *The application will be available at `http://localhost:3000`.*
+
+---
+
+## 🧪 Testing
+
+| | Backend | Frontend |
+|---|---|---|
+| Framework | pytest | Vitest (jsdom environment) |
+| Tests | `backend/tests/` | `frontend/tests/` |
+| Needs Ollama / model files / `.env`? | No (only the optional integration test needs Ollama) | No |
+
+[GitHub Actions CI](.github/workflows/ci.yml) runs on every push and pull request to `main`: the backend pytest suite,
+then the frontend tests, type check and production build. CI never needs Ollama.
+
+### Backend tests
+
+```bash
+cd backend
+pip install -r requirements.txt
+pip install -r requirements-dev.txt   # test-only dependencies (pytest)
+pytest
+```
+
+- The normal suite runs entirely offline. `conftest.py` points the app at a throwaway SQLite database with a
+  test-only `SECRET_KEY`; the real `lumina.db` is never touched, and the run aborts if the database is not a temporary
+  file. Ollama and TTS calls are replaced by deterministic fakes.
+- A normal run reports a few **xfailed** tests. These are strict regression tests for known, not-yet-fixed bugs;
+  `pytest -rx` lists them with their reasons. When one of those bugs is fixed the test unexpectedly passes and fails
+  the run, which is the signal to remove its `xfail` marker.
+- The older `unittest`-style tests in `tests/` are collected by pytest too; they can still be run on their own with
+  `python -m unittest discover -s tests -t .`. The scripts in `backend/scripts/` are manual tools, not part of the suite.
+
+#### Optional: integration tests (local Ollama)
+
+Tests marked `integration` talk to real services and are **excluded by default** (see `backend/pytest.ini`), so they
+are not part of CI. To run them, start Ollama and pull the embedding model first:
+
+```bash
+ollama pull nomic-embed-text
+cd backend
+pytest -m integration     # only the integration tests
+pytest -m ""              # everything, integration included
+```
+
+### Frontend tests
+
+```bash
+cd frontend
+npm ci
+npm test              # run all tests once
+npm run test:watch    # watch mode while developing
+```
+
+Type checking and the production build (both also run in CI):
+
+```bash
+cd frontend
+npm run typecheck     # tsc --noEmit
+npm run build         # next build
+```
+
+- Tests run in jsdom with a fixed UTC timezone and `en-US` locale. Shared test doubles (fake SpeechRecognition,
+  Audio, `/tts` fetch, `next/navigation`, fake clock) live in `frontend/tests/support/`.
+- Chat bubble markup is covered by snapshots in `frontend/tests/__snapshots__/`. After an intentional rendering
+  change, update them with `npx vitest run -u` and review the snapshot diff before committing.
 
 ---
 

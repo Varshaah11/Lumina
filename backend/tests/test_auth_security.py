@@ -414,7 +414,8 @@ class LimiterUnitTests(unittest.TestCase):
 FRONTEND_ROOT = pathlib.Path(__file__).resolve().parents[2] / "frontend"
 FRONTEND_SOURCES = [
     p for ext in ("*.ts", "*.tsx") for p in FRONTEND_ROOT.rglob(ext)
-    if not any(part in {"node_modules", ".next", "scripts"} for part in p.parts) and p.name != "next-env.d.ts"
+    # Application code only: dependencies, build output and frontend test code (tests/, legacy scripts/) are skipped
+    if not any(part in {"node_modules", ".next", "scripts", "tests"} for part in p.parts) and p.name != "next-env.d.ts"
 ]
 
 
